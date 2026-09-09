@@ -1062,7 +1062,6 @@ fn xflash_da2_boot(
     let gpt = xf.read_flash(0, 0x8000, storage_type).map_err(|e| e.to_string())?;
 
     let part_count = gpt_partition_count(&gpt);
-    println!("searching for usb device... OK FOUND");
     println!("Reading partition information.... OK [{}]", part_count.unwrap_or(0));
 
     println!("Reading system information....");
@@ -1228,6 +1227,10 @@ fn do_connect(args: &[String]) -> Response {
         }
     };
     let conn_type = device.conn_type();
+
+    if wait {
+        println!("Scanning for usb device.... OK");
+    }
 
     let mut proto = PlProtocol::new(&mut device);
     let hs_err = match proto.handshake() {
@@ -1687,7 +1690,9 @@ fn run_interactive() {
             "help" | "?" => print_help(),
             "exit" | "quit" | "q" => break,
             "detect" | "list" | "devices" => print_response(&do_detect()),
-            "connect" | "handshake" | "info" => print_response(&do_connect(&rest)),
+            "connect" | "handshake" | "info" => {
+                let _resp = do_connect(&rest);
+            }
             "da" | "send-da" | "upload-da" => print_response(&do_da(&rest)),
             "cls" | "clear" => {
                 if cfg!(windows) {
