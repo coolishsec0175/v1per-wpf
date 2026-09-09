@@ -792,6 +792,7 @@ enum XfCmd {
     Download = 0x010001,
     Upload = 0x010002,
     Format = 0x010003,
+    ReadData = 0x010005,
     Shutdown = 0x010007,
     BootTo = 0x010008,
     DeviceCtrl = 0x010009,
