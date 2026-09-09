@@ -804,6 +804,8 @@ enum XfCmd {
     GetPartitionTblCata = 0x040009,
     GetChipId = 0x04000D,
     GetDaVersion = 0x040005,
+    GetEmmcInfo = 0x040001,
+    GetUfsInfo = 0x040004,
 }
 
 struct XFlash<'a, P: MtkPort> {
@@ -970,6 +972,45 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
         self.devctrl(XfCmd::SetChecksumLevel, Some(&[&0u32.to_le_bytes()]))?;
         Ok(())
     }
+
+    fn detect_storage(&mut self) -> io::Result<u32> {
+        if let Ok(resp) = self.devctrl(XfCmd::GetEmmcInfo, None) {
+            if resp.len() >= 4 && u32::from_le_bytes(resp[0..4].try_into().unwrap()) == 0x1 {
+                return Ok(0x1);
+            }
+        }
+        if let Ok(resp) = self.devctrl(XfCmd::GetUfsInfo, None) {
+            if resp.len() >= 4 && u32::from_le_bytes(resp[0..4].try_into().unwrap()) == 0x30 {
+                return Ok(0x30);
+            }
+        }
+        Err(io::Error::new(io::ErrorKind::Other, "unknown storage type"))
+    }
+
+    fn read_flash(&mut self, addr: u64, size: usize, storage_type: u32) -> io::Result<Vec<u8>> {
+        let mut params = [0u8; 48];
+        params[0..4].copy_from_slice(&storage_type.to_le_bytes());
+        params[4..8].copy_from_slice(&0u32.to_le_bytes()); // partition_type: user
+        params[8..16].copy_from_slice(&addr.to_le_bytes());
+        params[16..24].copy_from_slice(&(size as u64).to_le_bytes());
+        self.send_cmd(XfCmd::ReadData)?;
+        self.send_data(&[&params])?;
+        self.status_ok()?;
+        let mut out = Vec::new();
+        while out.len() < size {
+            let chunk = self.read_packet()?;
+            if chunk.is_empty() {
+                break;
+            }
+            out.extend_from_slice(&chunk);
+            self.send_data(&[&0u32.to_le_bytes()])?;
+        }
+        Ok(out)
+    }
+
+    fn get_chip_id(&mut self) -> io::Result<Vec<u8>> {
+        self.devctrl(XfCmd::GetChipId, None)
+    }
 }
 
 fn select_da2(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8>), String> {
@@ -1015,7 +1056,37 @@ fn xflash_da2_boot(
     xf.get_packet_length().map_err(|e| e.to_string())?;
     xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
     eprintln!("DA2 booted! XFlash DA is running.");
+
+    // Give DA2 a moment to initialize DRAM and storage.
+    std::thread::sleep(Duration::from_millis(500));
+
+    let storage_type = xf.detect_storage().map_err(|e| e.to_string())?;
+    let storage_name = match storage_type {
+        0x1 => "eMMC",
+        0x30 => "UFS",
+        _ => "unknown",
+    };
+    eprintln!("Storage type: {storage_name}");
+
+    let gpt = xf.read_flash(0, 0x8000, storage_type).map_err(|e| e.to_string())?;
+    match gpt_partition_count(&gpt) {
+        Some(n) => eprintln!("Reading partition information.... OK [{n}]"),
+        None => eprintln!("Reading partition information.... FAILED (bad GPT)"),
+    }
+
+    if let Ok(chip_id) = xf.get_chip_id() {
+        eprintln!("Chip ID: {:02X?}", &chip_id[..chip_id.len().min(8)]);
+    }
     Ok(())
+}
+
+fn gpt_partition_count(gpt: &[u8]) -> Option<u32> {
+    let hdr = gpt.get(512..)?;
+    if hdr.get(..8) != Some(b"EFI PART") {
+        return None;
+    }
+    let num = u32::from_le_bytes(hdr.get(0x50..0x54)?.try_into().ok()?);
+    Some(num)
 }
 
 fn do_detect() -> Response {
