@@ -1041,7 +1041,7 @@ fn xflash_da2_boot(
     dacode: u16,
     hw_sub_code: u16,
     hw_code: u16,
-) -> Result<(), String> {
+) -> Result<MtkDevice, String> {
     let (da2_addr, da2) = select_da2(da_file, dacode, hw_sub_code)
         .map_err(|e| format!("select DA2: {e}"))?;
 
@@ -1049,14 +1049,24 @@ fn xflash_da2_boot(
     xf.da1_sync().map_err(|e| e.to_string())?;
     xf.get_packet_length().map_err(|e| e.to_string())?;
     xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
-    eprintln!("[dbg] boot_to ok, checking DA2...");
-    match xf.get_packet_length() {
-        Ok(()) => eprintln!("[dbg] get_packet_length after DA2 OK"),
-        Err(e) => eprintln!("[dbg] get_packet_length after DA2 err: {e}"),
-    }
+
+    // DA2 re-enumerates as a new USB device: close and wait for it.
+    device.close();
+    eprintln!("[dbg] DA2 sent, waiting for DA re-enumeration...");
+    let mut da_device = match find_mtk_device_poll(Duration::from_secs(30)) {
+        Some(dev) => dev,
+        None => return Err("DA device did not re-enumerate".into()),
+    };
+    eprintln!("[dbg] re-enumerated: {}", da_device.port_name());
 
     // Give DA2 a moment to initialize DRAM and storage.
     std::thread::sleep(Duration::from_millis(500));
+
+    let mut xf = XFlash::new(&mut da_device);
+    match xf.get_packet_length() {
+        Ok(()) => eprintln!("[dbg] DA2 get_packet_length OK"),
+        Err(e) => eprintln!("[dbg] DA2 get_packet_length err: {e}"),
+    }
 
     let storage_type = xf.detect_storage().map_err(|e| e.to_string())?;
     let gpt = xf.read_flash(0, 0x8000, storage_type).map_err(|e| e.to_string())?;
@@ -1089,7 +1099,7 @@ fn xflash_da2_boot(
     println!("Reading partition information.... OK [{}]", part_count.unwrap_or(0));
     println!("then reading other like system etc just type ... OK");
 
-    Ok(())
+    Ok(da_device)
 }
 
 fn gpt_partition_count(gpt: &[u8]) -> Option<u32> {
@@ -1303,7 +1313,8 @@ fn do_connect(args: &[String]) -> Response {
                                                 sub,
                                                 hw,
                                             ) {
-                                                Ok(()) => {
+                                                Ok(new_dev) => {
+                                                    device = new_dev;
                                                     da_success = true;
                                                 }
                                                 Err(e) => {
