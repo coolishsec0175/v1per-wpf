@@ -1,7 +1,7 @@
 use nusb::descriptors::TransferType;
-use nusb::io::{EndpointRead, EndpointWrite};
+// use nusb::io::{EndpointRead, EndpointWrite};
 use nusb::transfer::{Bulk, ControlOut, ControlType, Direction, In, Out, Recipient};
-use nusb::{Device, DeviceInfo, Interface, MaybeFuture};
+use nusb::{Device, Interface, MaybeFuture};
 use serde::Serialize;
 use std::io::{self, Read, Write};
 use std::time::Duration;
@@ -314,7 +314,8 @@ fn do_connect() -> Response {
 
     let mut writer = match bulk_iface
         .endpoint::<Bulk, Out>(ep_out)
-        .and_then(|ep| ep.writer(BULK_OUT_SZ).with_num_transfers(tr).with_write_timeout(Duration::from_secs(5)))
+        .map(|ep| ep.writer(BULK_OUT_SZ).with_num_transfers(tr).with_write_timeout(Duration::from_secs(5)))
+
         .build()
     {
         Ok(w) => w,
@@ -331,7 +332,8 @@ fn do_connect() -> Response {
 
     let mut reader = match bulk_iface
         .endpoint::<Bulk, In>(ep_in)
-        .and_then(|ep| ep.reader(BULK_IN_SZ).with_num_transfers(tr).with_read_timeout(Duration::from_secs(5)))
+        .map(|ep| ep.reader(BULK_IN_SZ).with_num_transfers(tr).with_read_timeout(Duration::from_secs(5)))
+
         .build()
     {
         Ok(r) => r,
@@ -381,7 +383,8 @@ fn do_connect() -> Response {
             }
         }
 
-        if resp != expected {
+                if resp[0] != expected {
+
 
             handshake_ok = false;
             break;
