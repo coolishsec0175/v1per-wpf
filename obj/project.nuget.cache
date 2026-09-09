@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "dgSpecHash": "sz/VG4ZpwXY=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\My PC\\Downloads\\test\\v1per-wpf\\v1per-wpf.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.android-arm.runtime.native.system.io.ports\\10.0.11\\runtime.android-arm.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.android-arm64.runtime.native.system.io.ports\\10.0.11\\runtime.android-arm64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.android-x64.runtime.native.system.io.ports\\10.0.11\\runtime.android-x64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.android-x86.runtime.native.system.io.ports\\10.0.11\\runtime.android-x86.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-arm.runtime.native.system.io.ports\\10.0.11\\runtime.linux-arm.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-arm64.runtime.native.system.io.ports\\10.0.11\\runtime.linux-arm64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-bionic-arm64.runtime.native.system.io.ports\\10.0.11\\runtime.linux-bionic-arm64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-bionic-x64.runtime.native.system.io.ports\\10.0.11\\runtime.linux-bionic-x64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-musl-arm.runtime.native.system.io.ports\\10.0.11\\runtime.linux-musl-arm.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-musl-arm64.runtime.native.system.io.ports\\10.0.11\\runtime.linux-musl-arm64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-musl-x64.runtime.native.system.io.ports\\10.0.11\\runtime.linux-musl-x64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.linux-x64.runtime.native.system.io.ports\\10.0.11\\runtime.linux-x64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.maccatalyst-arm64.runtime.native.system.io.ports\\10.0.11\\runtime.maccatalyst-arm64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.maccatalyst-x64.runtime.native.system.io.ports\\10.0.11\\runtime.maccatalyst-x64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.native.system.io.ports\\10.0.11\\runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.osx-arm64.runtime.native.system.io.ports\\10.0.11\\runtime.osx-arm64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\runtime.osx-x64.runtime.native.system.io.ports\\10.0.11\\runtime.osx-x64.runtime.native.system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\spectre.console\\0.57.2\\spectre.console.0.57.2.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\spectre.console.ansi\\0.57.2\\spectre.console.ansi.0.57.2.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\system.codedom\\8.0.0\\system.codedom.8.0.0.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\system.io.ports\\10.0.11\\system.io.ports.10.0.11.nupkg.sha512",
+    "C:\\Users\\My PC\\.nuget\\packages\\system.management\\8.0.0\\system.management.8.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

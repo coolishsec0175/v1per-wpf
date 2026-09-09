@@ -1,0 +1,642 @@
+﻿<Window x:Class="v1per_wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="V1Per" Height="680" Width="1125"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        WindowStartupLocation="CenterScreen"
+        MinHeight="560" MinWidth="900">
+
+    <Border CornerRadius="13" Background="{DynamicResource WindowBg}"
+            BorderBrush="{DynamicResource Border}"
+            BorderThickness="1" ClipToBounds="True">
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="38"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Title bar -->
+            <Grid Grid.Row="0" Background="{DynamicResource HeaderBg}"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border CornerRadius="4" Background="#F38BA8" Width="14" Height="14"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <TextBlock Grid.Column="1" Text="V1Per  —  android service toolkit"
+                           Foreground="{DynamicResource TextPrimary}" FontWeight="Bold"
+                           FontFamily="Cascadia Code, Consolas" FontSize="13"
+                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,6,0">
+                    <ToggleButton x:Name="ThemeToggle" Style="{StaticResource ToggleSwitch}"
+                                  IsChecked="True" Content="Dark Theme"
+                                  Checked="ThemeToggle_Changed" Unchecked="ThemeToggle_Changed"/>
+                    <Button Content="&#xE921;" Click="Minimize_Click" Style="{StaticResource TitleBtn}" ToolTip="Minimize"/>
+                    <Button Content="&#xE922;" Click="Maximize_Click" Style="{StaticResource TitleBtn}" ToolTip="Maximize"/>
+                    <Button Content="&#xE8BB;" Click="Close_Click" Style="{StaticResource TitleBtnClose}" ToolTip="Close"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Connection bar -->
+            <Border Grid.Row="1" Background="{DynamicResource HeaderBg}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                    Padding="12,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Connection" Foreground="{DynamicResource TextSecondary}"
+                               FontFamily="Cascadia Code, Consolas" FontSize="11"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <RadioButton Grid.Column="1" x:Name="RdDownload" GroupName="Conn" Content="Download"
+                                 IsChecked="True" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                    <RadioButton Grid.Column="2" x:Name="RdAdb" GroupName="Conn" Content="ADB / Fastboot"
+                                 VerticalAlignment="Center" Margin="0,0,18,0"/>
+
+                    <ToggleButton Grid.Column="3" x:Name="CkFdlLoaded" Style="{StaticResource ToggleSwitch}"
+                                  Content="FDL Loaded" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ToggleButton Grid.Column="4" x:Name="CkDiagConnected" Style="{StaticResource ToggleSwitch}"
+                                  Content="Diag Connected" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ToggleButton Grid.Column="5" x:Name="CkRsaExploit" Style="{StaticResource ToggleSwitch}"
+                                  Content="RSA Exploit" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ToggleButton Grid.Column="6" x:Name="CkAutoReboot" Style="{StaticResource ToggleSwitch}"
+                                  Content="Auto Reboot" IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <ToggleButton Grid.Column="7" x:Name="CkRepartition" Style="{StaticResource ToggleSwitch}"
+                                  Content="Repartition" IsEnabled="False" VerticalAlignment="Center" Margin="0,0,18,0"/>
+
+                    <StackPanel Grid.Column="8" Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="0,0,10,0">
+                        <TextBlock Text="USB Port" Foreground="{DynamicResource TextSecondary}"
+                                   FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox x:Name="ComboPort" Width="170" VerticalAlignment="Center"/>
+                        <Button x:Name="BtnRefreshPorts" Content="&#xE72C;" Style="{StaticResource GhostButton}"
+                                Padding="10,4" Click="BtnRefreshPorts_Click" Margin="6,0,0,0" ToolTip="Refresh ports"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="9" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="BtnInstallDriver" Content="Install Driver" Style="{StaticResource AccentButton}"
+                                Padding="12,5" Click="BtnInstallDriver_Click" Margin="0,0,8,0"/>
+                        <Button x:Name="BtnDeviceManager" Content="Device Manager" Style="{StaticResource GhostButton}"
+                                Padding="12,5" Click="BtnDeviceManager_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Content: logs left, tabs right -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2.1*"/>
+                    <ColumnDefinition Width="2.6*"/>
+                </Grid.ColumnDefinitions>
+
+                <Grid Grid.Column="0" Margin="12,12,6,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Console" Foreground="{DynamicResource AccentGlow}"
+                               FontFamily="Cascadia Code, Consolas" FontSize="12" FontWeight="Bold"
+                               Margin="2,0,0,6"/>
+                    <Border Grid.Row="1" Background="#16161F" CornerRadius="6"
+                            BorderBrush="{DynamicResource Border}" BorderThickness="1">
+                        <RichTextBox x:Name="ConsoleOutput"
+                                     Background="Transparent"
+                                     Foreground="#CDD6F4"
+                                     FontFamily="Cascadia Code, Consolas"
+                                     FontSize="13"
+                                     BorderThickness="0"
+                                     IsReadOnly="True"
+                                     IsReadOnlyCaretVisible="False"
+                                     HorizontalScrollBarVisibility="Auto"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Padding="12,10,12,10"
+                                     TextChanged="ConsoleOutput_TextChanged"/>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Column="1" Margin="6,12,12,12">
+                    <TabControl x:Name="MainTabs">
+
+                        <!-- MediaTek Tools tab -->
+                        <TabItem Header="MediaTek Tools">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          Background="{DynamicResource WindowBg}">
+                                <Grid Margin="10">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Connection -->
+                                    <GroupBox Header="Connection (BROM Mode Auto-Detect)" Grid.Row="0" Margin="0,0,0,6">
+                                        <StackPanel Margin="4">
+                                            <WrapPanel Margin="0,2">
+                                                <Button x:Name="BtnMtkConnect" Content="Connect (Auto-Detect)" Style="{StaticResource AccentButton}"
+                                                        Padding="18,8" Margin="0,0,8,4" Click="BtnMtkConnect_Click"/>
+                                                <Button x:Name="BtnMtkDisconnect" Content="Stop" Style="{StaticResource GhostButton}"
+                                                        Padding="18,8" Margin="0,0,8,4" Click="BtnMtkDisconnect_Click" IsEnabled="False"/>
+                                            </WrapPanel>
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource TextSecondary}"
+                                                       FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Text="Steps: 1) Browse DA file  2) Click Connect  3) Power off phone  4) Hold Vol+Vol-+Power  5) Plug USB"/>
+                                        </StackPanel>
+                                    </GroupBox>
+
+                                    <!-- DA Loading -->
+                                    <GroupBox Header="Download Agent (DA)" Grid.Row="1" Margin="0,0,0,6">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Label Content="DA File" VerticalAlignment="Center"/>
+                                            <TextBox x:Name="TxtMtkDaFile" Grid.Column="1" Margin="6,4" IsReadOnly="True"/>
+                                            <Button x:Name="BtnMtkBrowseDa" Content="Browse" Style="{StaticResource GhostButton}"
+                                                    Grid.Column="2" Padding="12,4" Margin="6,4,0,4" Click="BtnMtkBrowseDa_Click"/>
+                                        </Grid>
+                                    </GroupBox>
+
+                                    <!-- Device Info -->
+                                    <GroupBox Header="Device Info" Grid.Row="2" Margin="0,0,0,6">
+                                        <StackPanel Margin="4">
+                                            <WrapPanel Margin="0,2">
+                                                <Button x:Name="BtnMtkReadInfo" Content="Read Device Info" Style="{StaticResource AccentButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkReadInfo_Click" IsEnabled="False"/>
+                                                <Button x:Name="BtnMtkReboot" Content="Reboot" Style="{StaticResource GhostButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkReboot_Click" IsEnabled="False"/>
+                                            </WrapPanel>
+                                            <TextBox x:Name="TxtMtkDeviceInfo" IsReadOnly="True" TextWrapping="Wrap" Height="80"
+                                                     VerticalScrollBarVisibility="Auto" Margin="0,4,0,0"
+                                                     FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                     Background="{DynamicResource InputBg}" Foreground="{DynamicResource TextPrimary}"/>
+                                        </StackPanel>
+                                    </GroupBox>
+
+                                    <!-- Flash Operations -->
+                                    <GroupBox Header="Flash Operations" Grid.Row="3" Margin="0,0,0,6">
+                                        <StackPanel Margin="4">
+                                            <WrapPanel Margin="0,2">
+                                                <Button x:Name="BtnMtkFlash" Content="Flash Partition" Style="{StaticResource AccentButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkFlash_Click" IsEnabled="False"/>
+                                                <Button x:Name="BtnMtkReadPart" Content="Read Partition" Style="{StaticResource GhostButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkReadPart_Click" IsEnabled="False"/>
+                                                <Button x:Name="BtnMtkErase" Content="Erase Partition" Style="{StaticResource GhostButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkErase_Click" IsEnabled="False"/>
+                                                <Button x:Name="BtnMtkLoadScatter" Content="Load Scatter" Style="{StaticResource GhostButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkLoadScatter_Click"/>
+                                            </WrapPanel>
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource TextSecondary}"
+                                                       FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Text="Connect device in BROM/Preloader mode, load DA, then flash/read/erase partitions."/>
+                                        </StackPanel>
+                                    </GroupBox>
+
+                                    <!-- Exploit -->
+                                    <GroupBox Header="Security / Exploit" Grid.Row="4" Margin="0,0,0,6">
+                                        <StackPanel Margin="4">
+                                            <WrapPanel Margin="0,2">
+                                                <Button x:Name="BtnMtkExploitCheck" Content="Check Vulnerability" Style="{StaticResource GhostButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkExploitCheck_Click" IsEnabled="False"/>
+                                                <Button x:Name="BtnMtkBromExploit" Content="Run BROM Exploit" Style="{StaticResource GhostButton}"
+                                                        Padding="14,6" Margin="0,0,6,4" Click="BtnMtkBromExploit_Click" IsEnabled="False"/>
+                                                <ToggleButton x:Name="TglMtkExploitEnable" Content="Enable Exploit" Style="{StaticResource ToggleSwitch}"
+                                                              Margin="0,0,6,4" IsChecked="False"/>
+                                            </WrapPanel>
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource TextSecondary}"
+                                                       FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Text="BROM exploit bypasses DAA/SLA security. Device must be in BROM mode (short TP or testpoint)."/>
+                                        </StackPanel>
+                                    </GroupBox>
+
+                                    <!-- Partition Grid -->
+                                    <DataGrid x:Name="MtkPartitionGrid" Grid.Row="5"
+                                              AutoGenerateColumns="False" HeadersVisibility="Column"
+                                              CanUserAddRows="False" CanUserDeleteRows="False"
+                                              SelectionMode="Single"
+                                              RowHeight="26" FontFamily="Cascadia Code, Consolas" FontSize="11.5"
+                                              Margin="0,0,0,8">
+                                        <DataGrid.Columns>
+                                            <DataGridCheckBoxColumn Header="ok" Binding="{Binding IsChecked}" Width="34"/>
+                                            <DataGridTextColumn Header="Partition" Binding="{Binding Name}" Width="1.2*"/>
+                                            <DataGridTextColumn Header="Size" Binding="{Binding SizeDisplay}" Width="0.8*"/>
+                                            <DataGridTextColumn Header="Start" Binding="{Binding StartSector}" Width="1*"/>
+                                            <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="1*"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+
+                                </Grid>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- Qualcomm Tools tab -->
+                        <TabItem Header="Qualcomm Tools">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          Background="{DynamicResource WindowBg}">
+                                <Grid Margin="10">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                <!-- EDL (9008) -->
+                                <GroupBox Header="EDL (9008)" Grid.Row="0" Margin="0,0,0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Label Content="Port" VerticalAlignment="Center"/>
+                                        <ComboBox x:Name="ComboEdlPort" Grid.Column="1" Margin="6,4"/>
+                                        <Button x:Name="BtnEdlRefresh" Content="Refresh" Style="{StaticResource GhostButton}"
+                                                Grid.Column="2" Padding="12,4" Margin="6,4,6,4" Click="BtnEdlRefresh_Click"/>
+                                        <Button x:Name="BtnEdlDetect" Content="Detect" Style="{StaticResource AccentButton}"
+                                                Grid.Column="3" Padding="12,4" Margin="6,4,0,4" Click="BtnEdlDetect_Click"/>
+                                    </Grid>
+                                </GroupBox>
+
+                                <!-- Firmware -->
+                                <GroupBox Header="Firmware" Grid.Row="1" Margin="0,0,0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Label Content="Folder" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TxtQcFirmware" Grid.Column="1" Margin="6,4"/>
+                                        <Button x:Name="BtnQcBrowse" Content="Browse" Style="{StaticResource GhostButton}"
+                                                Grid.Column="2" Padding="12,4" Margin="6,4,0,4" Click="BtnQcBrowse_Click"/>
+                                    </Grid>
+                                </GroupBox>
+
+                                <!-- Flash Operations -->
+                                <GroupBox Header="Flash Operations" Grid.Row="2" Margin="0,0,0,6">
+                                    <StackPanel Margin="4">
+                                        <WrapPanel Margin="0,2">
+                                            <Button x:Name="BtnQcFlash" Content="Flash" Style="{StaticResource AccentButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcFlash_Click"/>
+                                            <Button x:Name="BtnQcDump" Content="Dump" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcDump_Click"/>
+                                            <Button x:Name="BtnQcCloudLoader" Content="Cloud Loader" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcCloudLoader_Click"/>
+                                            <Button x:Name="BtnQcStorage" Content="Detect Storage" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcStorage_Click"/>
+                                        </WrapPanel>
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Requires a firehose programmer and rawprogram0.xml. Enter 9008 EDL mode before flashing."/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- Device Info -->
+                                <GroupBox Header="Device Info" Grid.Row="3" Margin="0,0,0,6">
+                                    <StackPanel Margin="4">
+                                        <WrapPanel Margin="0,2">
+                                            <Button x:Name="BtnQcReadInfo" Content="Read Device Info" Style="{StaticResource AccentButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcReadInfo_Click"/>
+                                            <Button x:Name="BtnQcExploitCheck" Content="Check Vulnerabilities" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcExploitCheck_Click"/>
+                                            <Button x:Name="BtnQcExploit" Content="Run Exploit" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcExploit_Click" IsEnabled="False"/>
+                                            <ToggleButton x:Name="TglExploitEnable" Content="Enable Exploit" Style="{StaticResource ToggleSwitch}"
+                                                          Margin="0,0,6,4" IsChecked="False"/>
+                                        </WrapPanel>
+                                        <TextBox x:Name="TxtDeviceInfo" IsReadOnly="True" TextWrapping="Wrap" Height="72"
+                                                 VerticalScrollBarVisibility="Auto" Margin="0,4,0,0"
+                                                 FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                 Background="{DynamicResource InputBg}" Foreground="{DynamicResource TextPrimary}"/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- Auth Bypass -->
+                                <GroupBox Header="Auth Bypass" Grid.Row="4" Margin="0,0,0,6">
+                                    <StackPanel Margin="4">
+                                        <WrapPanel Margin="0,2">
+                                            <Button x:Name="BtnQcXiaomiAuth" Content="Xiaomi MiAuth" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcXiaomiAuth_Click"/>
+                                            <Button x:Name="BtnQcOnePlusAuth" Content="OnePlus Auth" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcOnePlusAuth_Click"/>
+                                        </WrapPanel>
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Bypass EDL auth for Xiaomi (MiAuth) and OnePlus (Demacia/SetProjModel) devices."/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- GPT Backup/Restore -->
+                                <GroupBox Header="GPT Backup / Restore" Grid.Row="5" Margin="0,0,0,6">
+                                    <StackPanel Margin="4">
+                                        <WrapPanel Margin="0,2">
+                                            <Button x:Name="BtnQcGptBackup" Content="Backup GPT" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcGptBackup_Click"/>
+                                            <Button x:Name="BtnQcGptFromXml" Content="Backup from rawprogram.xml" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcGptFromXml_Click"/>
+                                        </WrapPanel>
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Backup GPT from rawprogram.xml. Saves to Documents/V1Per/GPT_Backup/."/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- Firmware Convert -->
+                                <GroupBox Header="Firmware Convert" Grid.Row="6" Margin="0,0,0,6">
+                                    <StackPanel Margin="4">
+                                        <Grid Margin="0,2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="TxtConvertInput" Grid.Column="0" Margin="0,0,6,4"
+                                                     VerticalContentAlignment="Center"/>
+                                            <Button x:Name="BtnQcConvertBrowse" Content="Browse" Style="{StaticResource GhostButton}"
+                                                    Grid.Column="1" Padding="12,6" Margin="0,0,6,4" Click="BtnQcConvertBrowse_Click"/>
+                                            <Button x:Name="BtnQcConvert" Content="Convert" Style="{StaticResource AccentButton}"
+                                                    Grid.Column="2" Padding="12,6" Click="BtnQcConvert_Click"/>
+                                        </Grid>
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Convert OFP/OZIP/OPS firmware. OZIP and OPS are encrypted."/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                                <!-- Provision -->
+                                <GroupBox Header="UFS/eMMC Provision" Grid.Row="7" Margin="0,0,0,6">
+                                    <StackPanel Margin="4">
+                                        <WrapPanel Margin="0,2">
+                                            <Button x:Name="BtnQcProvisionParse" Content="Parse provision.xml" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcProvisionParse_Click"/>
+                                            <Button x:Name="BtnQcProvisionDefault" Content="Generate Default Config" Style="{StaticResource GhostButton}"
+                                                    Padding="14,6" Margin="0,0,6,4" Click="BtnQcProvisionDefault_Click"/>
+                                        </WrapPanel>
+                                        <TextBlock Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondary}"
+                                                   FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   Text="Parse or generate UFS/eMMC provision.xml. WARNING: Provisioning is irreversible."/>
+                                    </StackPanel>
+                                </GroupBox>
+
+                            </Grid>
+                            </ScrollViewer>
+                        </TabItem>
+
+                        <!-- Unisoc Tools tab -->
+                        <TabItem Header="Unisoc Tools">
+                            <Grid Margin="8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <GroupBox Header="Firmware / FDL" Grid.Row="0" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <Label Content="FDL1" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TxtFDL1" Grid.Row="0" Grid.Column="1" Margin="6,4"/>
+                                        <Button x:Name="BtnFDL1" Grid.Row="0" Grid.Column="2" Content="..."
+                                                Style="{StaticResource GhostButton}" Padding="10,3"
+                                                Margin="6,4,10,4" Click="BtnFDL1_Click"/>
+                                        <Label Content="FDL1 Addr" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TxtFDL1Addr" Grid.Row="0" Grid.Column="4" Margin="6,4" Text="0x00000000"/>
+
+                                        <Label Content="FDL2" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TxtFDL2" Grid.Row="1" Grid.Column="1" Margin="6,4"/>
+                                        <Button x:Name="BtnFDL2" Grid.Row="1" Grid.Column="2" Content="..."
+                                                Style="{StaticResource GhostButton}" Padding="10,3"
+                                                Margin="6,4,10,4" Click="BtnFDL2_Click"/>
+                                        <Label Content="FDL2 Addr" Grid.Row="1" Grid.Column="3" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TxtFDL2Addr" Grid.Row="1" Grid.Column="4" Margin="6,4" Text="0x00000000"/>
+
+                                        <Label Content="PAC Firmware" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="TxtPacFirmware" Grid.Row="2" Grid.Column="1" Margin="6,4"/>
+                                        <Button x:Name="BtnPacFirmware" Grid.Row="2" Grid.Column="2" Content="..."
+                                                Style="{StaticResource GhostButton}" Padding="10,3"
+                                                Margin="6,4,10,4" Click="BtnPacFirmware_Click"/>
+                                    </Grid>
+                                </GroupBox>
+
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+                                    <Button x:Name="BtnIdentify" Content="Identify" Style="{StaticResource AccentButton}"
+                                            Padding="14,6" Click="BtnIdentify_Click" Margin="0,0,8,0"/>
+                                    <Button x:Name="BtnReadPartition" Content="Read Partition" Style="{StaticResource AccentButton}"
+                                            Padding="14,6" Click="BtnReadPartition_Click" Margin="0,0,8,0"/>
+                                    <Button x:Name="BtnFlashPartition" Content="Flash Partition" Style="{StaticResource AccentButton}"
+                                            Padding="14,6" Click="BtnFlashPartition_Click" Margin="0,0,8,0"/>
+                                    <Button x:Name="BtnErase" Content="Erase" Style="{StaticResource AccentButton}"
+                                            Padding="14,6" Click="BtnErase_Click" Margin="0,0,8,0"/>
+                                    <Button x:Name="BtnEraseFrp" Content="Erase FRP" Style="{StaticResource AccentButton}"
+                                            Padding="14,6" Click="BtnEraseFrp_Click" Margin="0,0,8,0"/>
+                                    <ToggleButton x:Name="CkKeepNv" Style="{StaticResource ToggleSwitch}"
+                                                  Content="Keep NV" IsChecked="False" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <Button x:Name="BtnLoadScatter" Content="Load Scatter" Style="{StaticResource GhostButton}"
+                                            Padding="14,6" Click="BtnLoadScatter_Click"/>
+                                </StackPanel>
+
+                                <Grid Grid.Row="2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*"/>
+                                        <ColumnDefinition Width="1.5*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <DataGrid x:Name="PartitionGrid" Grid.Column="0"
+                                              AutoGenerateColumns="False" HeadersVisibility="Column"
+                                              CanUserAddRows="False" CanUserDeleteRows="False"
+                                              SelectionMode="Single"
+                                              RowHeight="26" FontFamily="Cascadia Code, Consolas" FontSize="11.5"
+                                              Margin="0,0,8,0">
+                                        <DataGrid.Columns>
+                                            <DataGridCheckBoxColumn Header="ok" Binding="{Binding IsChecked}" Width="34"/>
+                                            <DataGridTextColumn Header="Partition" Binding="{Binding Name}" Width="1.2*"/>
+                                            <DataGridTextColumn Header="File" Binding="{Binding FileName}" Width="1.6*"/>
+                                            <DataGridTextColumn Header="Size" Binding="{Binding Size}" Width="0.8*"/>
+                                            <DataGridTextColumn Header="Path" Binding="{Binding Path}" Width="2*"/>
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+
+                                    <GroupBox Header="Device / Unlock" Grid.Column="1">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+
+                                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBox x:Name="TxtSearchDevice" Text="Type for search..."
+                                                         GotFocus="TxtSearchDevice_GotFocus" LostFocus="TxtSearchDevice_LostFocus"
+                                                         TextChanged="TxtSearchDevice_TextChanged"/>
+                                                <ComboBox x:Name="ComboChipset" Grid.Column="1" Width="160" Margin="6,0,0,0"/>
+                                            </Grid>
+
+                                            <ListBox x:Name="DeviceList" Grid.Row="1" Height="140" Margin="0,0,0,6"
+                                                     FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                                     SelectionChanged="DeviceList_SelectionChanged"/>
+
+                                            <Grid Grid.Row="2">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Button x:Name="BtnUnlock" Content="Unlock Bootloader" Style="{StaticResource AccentButton}"
+                                                        Padding="12,6" Click="BtnUnlock_Click" Margin="0,0,4,4" FontSize="11"/>
+                                                <Button x:Name="BtnDump" Content="Dump" Style="{StaticResource AccentButton}"
+                                                        Padding="12,6" Click="BtnDump_Click" Grid.Column="1" Margin="4,0,0,4" FontSize="11"/>
+                                                <Button x:Name="BtnUnisocFlash" Content="Flash" Style="{StaticResource AccentButton}"
+                                                        Padding="12,6" Click="BtnUnisocFlash_Click" Grid.Row="1" Margin="0,0,4,4" FontSize="11"/>
+                                                <Button x:Name="BtnUnisocRoot" Content="Root" Style="{StaticResource AccentButton}"
+                                                        Padding="12,6" Click="BtnUnisocRoot_Click" Grid.Row="1" Grid.Column="1" Margin="4,0,0,4" FontSize="11"/>
+
+                                                <Label Content="Boot image" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" FontSize="10"/>
+                                                <TextBox x:Name="TxtBootImage" Grid.Row="2" Grid.Column="0" Margin="0,0,4,0" FontSize="10"/>
+                                                <Button x:Name="BtnBrowseBoot" Content="..." Style="{StaticResource GhostButton}"
+                                                        Grid.Row="2" Grid.Column="1" Padding="8,4"
+                                                        Click="BtnBrowseBoot_Click" FontSize="10"/>
+                                            </Grid>
+                                        </Grid>
+                                    </GroupBox>
+                                </Grid>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- Utilities Tools tab -->
+                        <TabItem Header="Utilities Tools">
+                            <Grid Margin="10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Button x:Name="BtnForceFastboot" Content="Force Fastboot" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnForceFastboot_Click" Margin="0,0,8,8"/>
+                                <Button x:Name="BtnScatter" Content="Scatter" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnScatter_Click" Grid.Column="1" Margin="0,0,8,8"/>
+                                <Button x:Name="BtnRoot" Content="Root" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnRoot_Click" Grid.Column="2" Margin="0,0,8,8"/>
+                                <Button x:Name="BtnAnyKernel" Content="AnyKernel" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnAnyKernel_Click" Grid.Column="3" Margin="0,0,0,8"/>
+
+                                <Button x:Name="BtnDrivers" Content="Drivers" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnDrivers_Click" Margin="0,0,8,8"/>
+                                <Button x:Name="BtnScrcpy" Content="scrcpy" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnScrcpy_Click" Grid.Column="1" Margin="0,0,8,8"/>
+                                <Button x:Name="BtnDevices" Content="Devices" Style="{StaticResource AccentButton}"
+                                        Padding="18,16" Click="BtnDevices_Click" Grid.Column="2" Margin="0,0,8,8"/>
+                                <Button x:Name="BtnDemo" Content="Showcase" Style="{StaticResource GhostButton}"
+                                        Padding="18,16" Click="BtnDemo_Click" Grid.Column="3" Margin="0,0,0,8"/>
+
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="4" Text="Force fastboot, scatter flash, root (FolkPatch / KernelSU-Next), GKI AnyKernel, drivers, screen mirror."
+                                           Foreground="{DynamicResource TextSecondary}"
+                                           FontFamily="Cascadia Code, Consolas" FontSize="11"
+                                           TextWrapping="Wrap" Margin="2,10,2,0"/>
+                            </Grid>
+                        </TabItem>
+
+                    </TabControl>
+                </Grid>
+            </Grid>
+
+            <!-- Bottom: progress + status -->
+            <Border Grid.Row="3" Background="{DynamicResource HeaderBg}"
+                    BorderBrush="{DynamicResource Border}" BorderThickness="0,1,0,0"
+                    Padding="12,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <ProgressBar x:Name="ProgressBar1" Value="0" Height="10"/>
+                        <ProgressBar x:Name="ProgressBar2" Grid.Row="1" Value="0" Height="10" Margin="0,4,0,0"/>
+                    </Grid>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                        <Button x:Name="BtnStop" Content="STOP" Style="{StaticResource AccentButton}"
+                                Background="#E81123" Padding="22,7" Click="BtnStop_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Border>
+</Window>
