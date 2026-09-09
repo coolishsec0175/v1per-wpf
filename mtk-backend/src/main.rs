@@ -786,6 +786,13 @@ impl<'a, P: MtkPort> PlProtocol<'a, P> {
 const XF_MAGIC: u32 = 0xFEEEEEEF;
 const XF_SYNC_SIGNAL: u32 = 0x434E5953;
 
+fn dbg_dump(prefix: &str, data: &[u8]) {
+    if std::env::var("MTK_DEBUG").is_ok() {
+        let hex: String = data.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+        eprintln!("[dbg] {prefix}: {hex}");
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 #[repr(u32)]
 enum XfCmd {
@@ -824,6 +831,8 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
         hdr[0..4].copy_from_slice(&XF_MAGIC.to_le_bytes());
         hdr[4..8].copy_from_slice(&1u32.to_le_bytes());
         hdr[8..12].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        dbg_dump("TX", &hdr);
+        dbg_dump("TX", data);
         self.port.write_all(&hdr)?;
         let max = self.write_packet_len;
         let mut pos = 0;
@@ -838,6 +847,7 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
     fn read_packet(&mut self) -> io::Result<Vec<u8>> {
         let mut hdr = [0u8; 12];
         self.port.read_exact(&mut hdr)?;
+        dbg_dump("RX", &hdr);
         let magic = u32::from_le_bytes(hdr[0..4].try_into().unwrap());
         let dtype = u32::from_le_bytes(hdr[4..8].try_into().unwrap());
         let len = u32::from_le_bytes(hdr[8..12].try_into().unwrap());
@@ -850,10 +860,12 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
         if dtype == 2 {
             let mut payload = vec![0u8; len as usize];
             self.port.read_exact(&mut payload)?;
+            dbg_dump("RX-msg", &payload);
             return self.read_packet();
         }
         let mut data = vec![0u8; len as usize];
         self.port.read_exact(&mut data)?;
+        dbg_dump("RX", &data);
         Ok(data)
     }
 
