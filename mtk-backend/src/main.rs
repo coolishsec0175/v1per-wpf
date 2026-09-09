@@ -904,19 +904,81 @@ fn do_da(args: &[String]) -> Response {
     }
 }
 
+fn print_help() {
+    println!("mtk-backend - MediaTek BROM/Preloader tool");
+    println!();
+    println!("Commands:");
+    println!("  detect                  list MTK USB devices (brom/preloader/da)");
+    println!("  connect [--wait] [da]   connect + handshake, optionally load DA");
+    println!("  da <file> [--addr ..]   upload a DA file and jump to it");
+    println!("  help                    show this help");
+    println!("  exit                    quit");
+    println!();
+    println!("Tip: 'connect --wait MTK_AllInOne_DA.bin' = wait for device, then auto handshake + DA.");
+}
+
+fn run_interactive() {
+    print_help();
+    println!();
+    loop {
+        print!("mtk> ");
+        let _ = io::stdout().flush();
+
+        let mut line = String::new();
+        match io::stdin().read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let mut parts = line.split_whitespace();
+        let cmd = parts.next().unwrap().to_lowercase();
+        let rest: Vec<String> = parts.map(String::from).collect();
+
+        match cmd.as_str() {
+            "help" | "?" => print_help(),
+            "exit" | "quit" | "q" => break,
+            "detect" | "list" | "devices" => print_response(&do_detect()),
+            "connect" | "handshake" | "info" => print_response(&do_connect(&rest)),
+            "da" | "send-da" | "upload-da" => print_response(&do_da(&rest)),
+            "cls" | "clear" => {
+                if cfg!(windows) {
+                    let _ = std::process::Command::new("cmd").args(["/C", "cls"]).status();
+                }
+            }
+            _ => println!("Unknown command: {cmd} (try 'help')"),
+        }
+        println!();
+    }
+}
+
+fn print_response(resp: &Response) {
+    println!("{}", serde_json::to_string(resp).unwrap());
+}
+
 fn main() {
     env_logger::init();
 
     let args: Vec<String> = std::env::args().collect();
-    let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("detect");
+    let cmd = args.get(1).map(|s| s.as_str());
     let rest = &args[2..];
 
-    let resp = match cmd {
-        "detect" | "list" | "devices" => do_detect(),
-        "connect" | "handshake" | "info" => do_connect(rest),
-        "da" | "send-da" | "upload-da" => do_da(rest),
-        _ => Response::error(format!("Unknown command: {cmd}")),
-    };
-
-    println!("{}", serde_json::to_string(&resp).unwrap());
+    match cmd {
+        None => run_interactive(),
+        Some("help") | Some("-h") | Some("--help") => print_help(),
+        Some(c) => {
+            let resp = match c {
+                "detect" | "list" | "devices" => do_detect(),
+                "connect" | "handshake" | "info" => do_connect(rest),
+                "da" | "send-da" | "upload-da" => do_da(rest),
+                _ => Response::error(format!("Unknown command: {c}")),
+            };
+            print_response(&resp);
+        }
+    }
 }
