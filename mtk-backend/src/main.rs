@@ -783,6 +783,241 @@ impl<'a, P: MtkPort> PlProtocol<'a, P> {
     }
 }
 
+const XF_MAGIC: u32 = 0xFEEEEEEF;
+const XF_SYNC_SIGNAL: u32 = 0x434E5953;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u32)]
+enum XfCmd {
+    Download = 0x010001,
+    Upload = 0x010002,
+    Format = 0x010003,
+    Shutdown = 0x010007,
+    BootTo = 0x010008,
+    DeviceCtrl = 0x010009,
+    InitExtRam = 0x01000A,
+    SetupEnvironment = 0x010100,
+    SetupHwInitParams = 0x010101,
+    SetChecksumLevel = 0x020003,
+    GetConnectionAgent = 0x04000A,
+    GetPacketLength = 0x040007,
+    GetPartitionTblCata = 0x040009,
+    GetChipId = 0x04000D,
+    GetDaVersion = 0x040005,
+}
+
+struct XFlash<'a, P: MtkPort> {
+    port: &'a mut P,
+    write_packet_len: usize,
+}
+
+impl<'a, P: MtkPort> XFlash<'a, P> {
+    fn new(port: &'a mut P) -> Self {
+        Self { port, write_packet_len: 0x8000 }
+    }
+
+    fn write_packet(&mut self, data: &[u8]) -> io::Result<()> {
+        let mut hdr = [0u8; 12];
+        hdr[0..4].copy_from_slice(&XF_MAGIC.to_le_bytes());
+        hdr[4..8].copy_from_slice(&1u32.to_le_bytes());
+        hdr[8..12].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        self.port.write_all(&hdr)?;
+        let max = self.write_packet_len;
+        let mut pos = 0;
+        while pos < data.len() {
+            let end = (pos + max).min(data.len());
+            self.port.write_all(&data[pos..end])?;
+            pos = end;
+        }
+        Ok(())
+    }
+
+    fn read_packet(&mut self) -> io::Result<Vec<u8>> {
+        let mut hdr = [0u8; 12];
+        self.port.read_exact(&mut hdr)?;
+        let magic = u32::from_le_bytes(hdr[0..4].try_into().unwrap());
+        let dtype = u32::from_le_bytes(hdr[4..8].try_into().unwrap());
+        let len = u32::from_le_bytes(hdr[8..12].try_into().unwrap());
+        if magic != XF_MAGIC {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("bad XFlash magic 0x{magic:08X}"),
+            ));
+        }
+        if dtype == 2 {
+            let mut payload = vec![0u8; len as usize];
+            self.port.read_exact(&mut payload)?;
+            let body = String::from_utf8_lossy(&payload[4.min(len as usize)..]);
+            eprintln!("[DA] {}", body.trim_end_matches('\0'));
+            return self.read_packet();
+        }
+        let mut data = vec![0u8; len as usize];
+        self.port.read_exact(&mut data)?;
+        Ok(data)
+    }
+
+    fn read_status(&mut self) -> io::Result<u32> {
+        let data = self.read_packet()?;
+        if data.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "empty status"));
+        }
+        Ok(u32::from_le_bytes(data[..4].try_into().unwrap()))
+    }
+
+    fn status_ok(&mut self) -> io::Result<()> {
+        let status = self.read_status()?;
+        if status != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("XFlash status 0x{status:08X}"),
+            ));
+        }
+        Ok(())
+    }
+
+    fn send_data(&mut self, chunks: &[&[u8]]) -> io::Result<()> {
+        for chunk in chunks {
+            self.write_packet(chunk)?;
+        }
+        self.status_ok()?;
+        Ok(())
+    }
+
+    fn send_cmd(&mut self, cmd: XfCmd) -> io::Result<()> {
+        let b = (cmd as u32).to_le_bytes();
+        self.send_data(&[&b])
+    }
+
+    fn devctrl(&mut self, cmd: XfCmd, params: Option<&[&[u8]]>) -> io::Result<Vec<u8>> {
+        self.send_cmd(XfCmd::DeviceCtrl)?;
+        self.send_cmd(cmd)?;
+        if let Some(p) = params {
+            self.send_data(p)?;
+            return Ok(vec![]);
+        }
+        let read = self.read_packet()?;
+        self.status_ok()?;
+        Ok(read)
+    }
+
+    fn get_packet_length(&mut self) -> io::Result<()> {
+        let data = self.devctrl(XfCmd::GetPacketLength, None)?;
+        if data.len() >= 8 {
+            let w = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
+            let r = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
+            if w > 0 && w < 0x8000 {
+                self.write_packet_len = w;
+            }
+            eprintln!("XFlash packet len: write=0x{w:X} read=0x{r:X}");
+        }
+        Ok(())
+    }
+
+    fn boot_to(&mut self, addr: u32, data: &[u8]) -> io::Result<()> {
+        self.send_cmd(XfCmd::BootTo)?;
+        let mut param = [0u8; 16];
+        param[0..8].copy_from_slice(&(addr as u64).to_le_bytes());
+        param[8..16].copy_from_slice(&(data.len() as u64).to_le_bytes());
+        self.send_data(&[&param, data])?;
+        let status = self.read_status()?;
+        if status != 0 && status != XF_SYNC_SIGNAL {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("BootTo status 0x{status:08X}"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// DA1 sync after jump: sync byte, SyncSignal, env setup, checksum level.
+    fn da1_sync(&mut self) -> io::Result<()> {
+        let mut sync = [0u8; 1];
+        self.port.read_exact(&mut sync)?;
+        if sync[0] != 0xC0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("expected sync byte 0xC0, got 0x{:02X}", sync[0]),
+            ));
+        }
+        eprintln!("DA1 sync byte OK");
+
+        self.write_packet(&XF_SYNC_SIGNAL.to_le_bytes())?;
+
+        let mut env = [0u8; 20];
+        env[0..4].copy_from_slice(&1u32.to_le_bytes()); // da_log_level: Info
+        env[4..8].copy_from_slice(&1u32.to_le_bytes()); // log_channel: UART
+        env[8..12].copy_from_slice(&0u32.to_le_bytes()); // system_os: Windows
+        self.send_data(&[&(XfCmd::SetupEnvironment as u32).to_le_bytes(), &env])?;
+
+        self.send_data(&[&(XfCmd::SetupHwInitParams as u32).to_le_bytes(), &[0u8; 4]])?;
+
+        let status = self.read_status()?;
+        if status != XF_SYNC_SIGNAL && status != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("DA1 sync signal 0x{status:08X}"),
+            ));
+        }
+        eprintln!("DA1 sync signal OK");
+
+        let agent = self.devctrl(XfCmd::GetConnectionAgent, None)?;
+        let agent_str = String::from_utf8_lossy(&agent).trim_end_matches('\0').to_string();
+        eprintln!("Connection agent: {agent_str}");
+        if agent_str == "preloader" {
+            // No EMI upload needed when we came from the preloader.
+        }
+
+        self.devctrl(XfCmd::SetChecksumLevel, Some(&[&0u32.to_le_bytes()]))?;
+        Ok(())
+    }
+}
+
+fn select_da2(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8>), String> {
+    let entries = parse_da(data)?;
+    let entry = entries
+        .iter()
+        .find(|e| e.hw_code == dacode && e.hw_sub_code == hw_sub_code)
+        .or_else(|| entries.iter().find(|e| e.hw_code == dacode))
+        .ok_or_else(|| format!("No DA entry for dacode 0x{dacode:04X}"))?;
+
+    let region = if entry.regions.len() == 2 {
+        entry.regions.get(1).ok_or("DA entry has no DA2 region")?
+    } else {
+        entry.regions.get(2).ok_or("DA entry has no DA2 region")?
+    };
+
+    let start = region.offset as usize;
+    let content_len = (region.length - region.sig_len) as usize;
+    let end = start + content_len;
+    if end > data.len() {
+        return Err("DA2 region out of bounds".into());
+    }
+    Ok((region.addr, data[start..end].to_vec()))
+}
+
+fn xflash_da2_boot(
+    device: &mut MtkDevice,
+    da_file: &[u8],
+    dacode: u16,
+    hw_sub_code: u16,
+) -> Result<(), String> {
+    let (da2_addr, da2) = select_da2(da_file, dacode, hw_sub_code)
+        .map_err(|e| format!("select DA2: {e}"))?;
+
+    eprintln!(
+        "Loading DA2: {} bytes @ 0x{:08X}...",
+        da2.len(),
+        da2_addr
+    );
+
+    let mut xf = XFlash::new(device);
+    xf.da1_sync().map_err(|e| e.to_string())?;
+    xf.get_packet_length().map_err(|e| e.to_string())?;
+    xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
+    eprintln!("DA2 booted! XFlash DA is running.");
+    Ok(())
+}
+
 fn do_detect() -> Response {
     let devices = match nusb::list_devices().wait() {
         Ok(d) => d,
@@ -933,11 +1168,22 @@ fn do_connect(args: &[String]) -> Response {
                                     }
                                     match proto.jump_da(da_addr) {
                                         Ok(()) => {
-                                            da_success = true;
                                             if wait {
-                                                eprintln!(
-                                                    "DA1 booted! Device will re-enumerate as DA."
-                                                );
+                                                eprintln!("DA1 booted, starting XFlash sync...");
+                                            }
+                                            match xflash_da2_boot(
+                                                &mut device,
+                                                &data,
+                                                dacode,
+                                                sub,
+                                            ) {
+                                                Ok(()) => {
+                                                    da_success = true;
+                                                }
+                                                Err(e) => {
+                                                    da_error = Some(format!("DA2 boot failed: {e}"));
+                                                    eprintln!("DA2 boot failed: {e}");
+                                                }
                                             }
                                         }
                                         Err(e) => {
