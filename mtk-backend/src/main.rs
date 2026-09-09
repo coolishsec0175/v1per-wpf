@@ -4,7 +4,7 @@ use nusb::transfer::{Bulk, ControlOut, ControlType, Direction, In, Out, Recipien
 use nusb::{Device, DeviceInfo, Interface, MaybeFuture};
 use serde::Serialize;
 use std::io::{self, Read, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MTK_VID: u16 = 0x0E8D;
 const BULK_IN_SZ: usize = 0x80000;
@@ -566,11 +566,35 @@ fn do_detect() -> Response {
     }
 }
 
-fn do_connect() -> Response {
-    let (info, conn_type) = match UsbMtkPort::find_mtk_device() {
+fn do_connect(args: &[String]) -> Response {
+    let wait = args.iter().any(|a| a == "--wait" || a == "-w");
+    let da_path = args.iter().find(|a| !a.starts_with('-')).map(|s| s.clone());
+
+    if wait {
+        eprintln!("Waiting for MTK devices...");
+        eprintln!("Power off the phone, hold ALL buttons, then plug USB.");
+    }
+
+    let (info, conn_type) = match if wait {
+        match find_mtk_device_poll(Duration::from_secs(120)) {
+            Some(v) => Ok(v),
+            None => Err("No MTK device found after 120s".to_string()),
+        }
+    } else {
+        UsbMtkPort::find_mtk_device()
+    } {
         Ok(v) => v,
         Err(e) => return Response::error(e),
     };
+
+    if wait {
+        eprintln!(
+            "OK FOUND: {:04X}:{:04X} ({})",
+            info.vendor_id(),
+            info.product_id(),
+            conn_type.as_str()
+        );
+    }
 
     let mut port = UsbMtkPort::new(info, conn_type);
     if let Err(e) = port.open() {
@@ -591,6 +615,12 @@ fn do_connect() -> Response {
     let mut target_config = None;
     let mut soc_id = None;
     let mut me_id = None;
+
+    let mut da_success = false;
+    let mut da_error = None;
+    let mut da_address = None;
+    let mut da_size = None;
+    let mut da_sig_len = None;
 
     if hs_err.is_none() {
         if let Ok(c) = proto.get_hw_code() {
@@ -618,6 +648,66 @@ fn do_connect() -> Response {
         if let Ok(v) = proto.get_me_id() {
             me_id = v;
         }
+
+        if wait {
+            eprintln!(
+                "Handshake OK. Chip: {} (hw_code 0x{:04X})",
+                chip_name(hw_code.unwrap_or(0) as u16),
+                hw_code.unwrap_or(0)
+            );
+        }
+
+        if let Some(path) = da_path {
+            match std::fs::read(&path) {
+                Ok(data) => {
+                    let hw = hw_code.unwrap_or(0) as u16;
+                    let address = da1_address(hw);
+                    let sig_len = detect_signature_length(&data, hw) as u32;
+                    da_address = Some(address);
+                    da_size = Some(data.len());
+                    da_sig_len = Some(sig_len);
+
+                    if wait {
+                        eprintln!(
+                            "Loading DA: {} ({} bytes @ 0x{:08X}, sig_len 0x{:X})",
+                            path,
+                            data.len(),
+                            address,
+                            sig_len
+                        );
+                    }
+                    match proto.send_da(address, &data, sig_len) {
+                        Ok(()) => {
+                            if wait {
+                                eprintln!("DA sent, jumping to 0x{:08X}...", address);
+                            }
+                            match proto.jump_da(address) {
+                                Ok(()) => {
+                                    da_success = true;
+                                    if wait {
+                                        eprintln!("DA booted! Device will re-enumerate as DA.");
+                                    }
+                                }
+                                Err(e) => {
+                                    da_error = Some(format!("Jump DA failed: {e}"));
+                                    eprintln!("Jump DA failed: {e}");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            da_error = Some(format!("Send DA failed: {e}"));
+                            eprintln!("Send DA failed: {e}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    da_error = Some(format!("Failed to read DA file: {e}"));
+                    eprintln!("Failed to read DA file: {e}");
+                }
+            }
+        }
+    } else if wait {
+        eprintln!("Handshake failed: {}", hs_err.as_deref().unwrap_or("?"));
     }
 
     port.close();
@@ -639,7 +729,17 @@ fn do_connect() -> Response {
             connection_type: Some(conn_type.as_str().to_string()),
             error: hs_err.clone(),
         }),
-        da_upload: None,
+        da_upload: if da_path.is_some() {
+            Some(DaUploadResult {
+                success: da_success,
+                address: da_address,
+                size: da_size,
+                sig_len: da_sig_len,
+                error: da_error,
+            })
+        } else {
+            None
+        },
         error: if success { None } else { Some("Handshake failed".into()) },
     }
 }
@@ -650,6 +750,44 @@ fn parse_hex(s: &str) -> Option<u32> {
         u32::from_str_radix(hex, 16).ok()
     } else {
         t.parse::<u32>().ok()
+    }
+}
+
+fn chip_name(hw_code: u16) -> &'static str {
+    match hw_code {
+        0x0321 => "MT6735",
+        0x0326 => "MT6755",
+        0x0335 => "MT6737",
+        0x0507 => "MT6779",
+        0x0551 => "MT6768",
+        0x0562 => "MT6761",
+        0x0570 | 0x6580 => "MT6580",
+        0x0571 => "MT6572",
+        0x0588 => "MT6785",
+        0x0600 => "MT6853",
+        0x0688 | 0x6771 => "MT6771",
+        0x0717 | 0x6765 => "MT6765",
+        0x0766 => "MT6877",
+        0x0788 => "MT6873",
+        0x0813 => "MT6833",
+        0x0886 => "MT6885",
+        0x0989 => "MT6891",
+        0x0996 => "MT6895",
+        0x1209 => "MT6985",
+        _ => "unknown",
+    }
+}
+
+fn find_mtk_device_poll(timeout: Duration) -> Option<(DeviceInfo, ConnType)> {
+    let start = Instant::now();
+    loop {
+        if let Ok((info, ct)) = UsbMtkPort::find_mtk_device() {
+            return Some((info, ct));
+        }
+        if start.elapsed() >= timeout {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(500));
     }
 }
 
@@ -775,7 +913,7 @@ fn main() {
 
     let resp = match cmd {
         "detect" | "list" | "devices" => do_detect(),
-        "connect" | "handshake" | "info" => do_connect(),
+        "connect" | "handshake" | "info" => do_connect(rest),
         "da" | "send-da" | "upload-da" => do_da(rest),
         _ => Response::error(format!("Unknown command: {cmd}")),
     };
