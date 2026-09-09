@@ -1064,7 +1064,7 @@ fn parse_da(data: &[u8]) -> Result<Vec<DaEntry>, String> {
     if data.len() < 0x6C {
         return Err("DA file too short".into());
     }
-    if &data[..16] != b"MTK_DOWNLOAD_AGENT" {
+    if &data[..18] != b"MTK_DOWNLOAD_AGENT" {
         return Err("Not a valid DA file (missing MTK_DOWNLOAD_AGENT)".into());
     }
     let version = u32::from_le_bytes(data[96..100].try_into().unwrap());
