@@ -1041,7 +1041,7 @@ fn xflash_da2_boot(
     dacode: u16,
     hw_sub_code: u16,
     hw_code: u16,
-) -> Result<MtkDevice, String> {
+) -> Result<(), String> {
     let (da2_addr, da2) = select_da2(da_file, dacode, hw_sub_code)
         .map_err(|e| format!("select DA2: {e}"))?;
 
@@ -1050,25 +1050,25 @@ fn xflash_da2_boot(
     xf.get_packet_length().map_err(|e| e.to_string())?;
     xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
 
-    // DA2 re-enumerates as a new USB device: close and wait for it.
-    device.close();
-    eprintln!("[dbg] DA2 sent, waiting for DA re-enumeration...");
-    let mut da_device = match find_mtk_device_poll(Duration::from_secs(30)) {
-        Some(dev) => dev,
-        None => return Err("DA device did not re-enumerate".into()),
-    };
-    eprintln!("[dbg] re-enumerated: {}", da_device.port_name());
+    // DA2 needs time to initialize DRAM and storage.
+    eprintln!("[dbg] DA2 sent, waiting for it to initialize...");
+    std::thread::sleep(Duration::from_secs(3));
 
-    // Give DA2 a moment to initialize DRAM and storage.
-    std::thread::sleep(Duration::from_millis(500));
-
-    let mut xf = XFlash::new(&mut da_device);
-    match xf.get_packet_length() {
-        Ok(()) => eprintln!("[dbg] DA2 get_packet_length OK"),
-        Err(e) => eprintln!("[dbg] DA2 get_packet_length err: {e}"),
+    // Retry storage detection; DA2 may take a moment to be ready.
+    let mut storage_type = None;
+    for attempt in 1..=6 {
+        match xf.detect_storage() {
+            Ok(st) => {
+                eprintln!("[dbg] storage type = 0x{st:X} (attempt {attempt})");
+                storage_type = Some(st);
+                break;
+            }
+            Err(e) => eprintln!("[dbg] storage detect attempt {attempt}: {e}"),
+        }
+        std::thread::sleep(Duration::from_millis(1000));
     }
+    let storage_type = storage_type.ok_or_else(|| "storage detection failed".to_string())?;
 
-    let storage_type = xf.detect_storage().map_err(|e| e.to_string())?;
     let gpt = xf.read_flash(0, 0x8000, storage_type).map_err(|e| e.to_string())?;
 
     let part_count = gpt_partition_count(&gpt);
@@ -1099,7 +1099,7 @@ fn xflash_da2_boot(
     println!("Reading partition information.... OK [{}]", part_count.unwrap_or(0));
     println!("then reading other like system etc just type ... OK");
 
-    Ok(da_device)
+    Ok(())
 }
 
 fn gpt_partition_count(gpt: &[u8]) -> Option<u32> {
@@ -1313,8 +1313,7 @@ fn do_connect(args: &[String]) -> Response {
                                                 sub,
                                                 hw,
                                             ) {
-                                                Ok(new_dev) => {
-                                                    device = new_dev;
+                                                Ok(()) => {
                                                     da_success = true;
                                                 }
                                                 Err(e) => {
