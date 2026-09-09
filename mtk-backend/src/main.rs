@@ -966,12 +966,12 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).map(|s| s.as_str());
-    let rest = &args[2..];
 
     match cmd {
         None => run_interactive(),
         Some("help") | Some("-h") | Some("--help") => print_help(),
         Some(c) => {
+            let rest = &args[2..];
             let resp = match c {
                 "detect" | "list" | "devices" => do_detect(),
                 "connect" | "handshake" | "info" => do_connect(rest),
