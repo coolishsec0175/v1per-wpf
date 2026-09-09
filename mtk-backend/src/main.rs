@@ -315,8 +315,6 @@ fn do_connect() -> Response {
     let mut writer = match bulk_iface
         .endpoint::<Bulk, Out>(ep_out)
         .map(|ep| ep.writer(BULK_OUT_SZ).with_num_transfers(tr).with_write_timeout(Duration::from_secs(5)))
-
-        .build()
     {
         Ok(w) => w,
         Err(e) => {
@@ -333,8 +331,6 @@ fn do_connect() -> Response {
     let mut reader = match bulk_iface
         .endpoint::<Bulk, In>(ep_in)
         .map(|ep| ep.reader(BULK_IN_SZ).with_num_transfers(tr).with_read_timeout(Duration::from_secs(5)))
-
-        .build()
     {
         Ok(r) => r,
         Err(e) => {
