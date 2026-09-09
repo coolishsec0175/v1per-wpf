@@ -911,48 +911,50 @@ fn do_connect(args: &[String]) -> Response {
                     let hw = hw_code.unwrap_or(0) as u16;
                     let sub = hw_sub_code.unwrap_or(0) as u16;
                     let dacode = dacode_for(hw);
-                    let (da_addr, da1, da_sig) = match select_da1(&data, dacode, sub) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            da_error = Some(e.clone());
-                            eprintln!("{e}");
-                            return;
-                        }
-                    };
-                    da_address = Some(da_addr);
-                    da_size = Some(da1.len());
-                    da_sig_len = Some(da_sig);
+                    match select_da1(&data, dacode, sub) {
+                        Ok((da_addr, da1, da_sig)) => {
+                            da_address = Some(da_addr);
+                            da_size = Some(da1.len());
+                            da_sig_len = Some(da_sig);
 
-                    if wait {
-                        eprintln!(
-                            "Loading DA1: {} ({} bytes @ 0x{:08X}, sig_len 0x{:X})",
-                            path,
-                            da1.len(),
-                            da_addr,
-                            da_sig
-                        );
-                    }
-                    match proto.send_da(da_addr, &da1, da_sig) {
-                        Ok(()) => {
                             if wait {
-                                eprintln!("DA1 sent, jumping to 0x{:08X}...", da_addr);
+                                eprintln!(
+                                    "Loading DA1: {} ({} bytes @ 0x{:08X}, sig_len 0x{:X})",
+                                    path,
+                                    da1.len(),
+                                    da_addr,
+                                    da_sig
+                                );
                             }
-                            match proto.jump_da(da_addr) {
+                            match proto.send_da(da_addr, &da1, da_sig) {
                                 Ok(()) => {
-                                    da_success = true;
                                     if wait {
-                                        eprintln!("DA1 booted! Device will re-enumerate as DA.");
+                                        eprintln!("DA1 sent, jumping to 0x{:08X}...", da_addr);
+                                    }
+                                    match proto.jump_da(da_addr) {
+                                        Ok(()) => {
+                                            da_success = true;
+                                            if wait {
+                                                eprintln!(
+                                                    "DA1 booted! Device will re-enumerate as DA."
+                                                );
+                                            }
+                                        }
+                                        Err(e) => {
+                                            da_error = Some(format!("Jump DA failed: {e}"));
+                                            eprintln!("Jump DA failed: {e}");
+                                        }
                                     }
                                 }
                                 Err(e) => {
-                                    da_error = Some(format!("Jump DA failed: {e}"));
-                                    eprintln!("Jump DA failed: {e}");
+                                    da_error = Some(format!("Send DA failed: {e}"));
+                                    eprintln!("Send DA failed: {e}");
                                 }
                             }
                         }
                         Err(e) => {
-                            da_error = Some(format!("Send DA failed: {e}"));
-                            eprintln!("Send DA failed: {e}");
+                            da_error = Some(e);
+                            eprintln!("{}", da_error.as_deref().unwrap());
                         }
                     }
                 }
