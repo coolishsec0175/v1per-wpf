@@ -906,34 +906,42 @@ fn do_connect(args: &[String]) -> Response {
         }
 
         if let Some(path) = da_path.as_ref() {
-            match std::fs::read(&path) {
+            match std::fs::read(path) {
                 Ok(data) => {
                     let hw = hw_code.unwrap_or(0) as u16;
-                    let address = da1_address(hw);
-                    let sig_len = detect_signature_length(&data, hw) as u32;
-                    da_address = Some(address);
-                    da_size = Some(data.len());
-                    da_sig_len = Some(sig_len);
+                    let sub = hw_sub_code.unwrap_or(0) as u16;
+                    let dacode = dacode_for(hw);
+                    let (da_addr, da1, da_sig) = match select_da1(&data, dacode, sub) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            da_error = Some(e.clone());
+                            eprintln!("{e}");
+                            return;
+                        }
+                    };
+                    da_address = Some(da_addr);
+                    da_size = Some(da1.len());
+                    da_sig_len = Some(da_sig);
 
                     if wait {
                         eprintln!(
-                            "Loading DA: {} ({} bytes @ 0x{:08X}, sig_len 0x{:X})",
+                            "Loading DA1: {} ({} bytes @ 0x{:08X}, sig_len 0x{:X})",
                             path,
-                            data.len(),
-                            address,
-                            sig_len
+                            da1.len(),
+                            da_addr,
+                            da_sig
                         );
                     }
-                    match proto.send_da(address, &data, sig_len) {
+                    match proto.send_da(da_addr, &da1, da_sig) {
                         Ok(()) => {
                             if wait {
-                                eprintln!("DA sent, jumping to 0x{:08X}...", address);
+                                eprintln!("DA1 sent, jumping to 0x{:08X}...", da_addr);
                             }
-                            match proto.jump_da(address) {
+                            match proto.jump_da(da_addr) {
                                 Ok(()) => {
                                     da_success = true;
                                     if wait {
-                                        eprintln!("DA booted! Device will re-enumerate as DA.");
+                                        eprintln!("DA1 booted! Device will re-enumerate as DA.");
                                     }
                                 }
                                 Err(e) => {
@@ -1018,12 +1026,128 @@ fn chip_name(hw_code: u16) -> &'static str {
         0x0766 => "MT6877",
         0x0788 => "MT6873",
         0x0813 => "MT6833",
+        0x0816 => "MT6885",
         0x0886 => "MT6885",
-        0x0989 => "MT6891",
-        0x0996 => "MT6895",
+        0x0989 => "MT6833 (Dimensity 700)",
+        0x0996 => "MT6853 (Dimensity 720)",
         0x1209 => "MT6985",
         _ => "unknown",
     }
+}
+
+/// BROM hw_code -> DA selection code (dacode). Defaults to the hw_code itself.
+fn dacode_for(hw_code: u16) -> u16 {
+    match hw_code {
+        0x0989 => 0x6833,
+        0x0996 => 0x6853,
+        0x0816 => 0x6885,
+        _ => hw_code,
+    }
+}
+
+struct DaRegion {
+    offset: u32,
+    length: u32,
+    addr: u32,
+    sig_len: u32,
+}
+
+struct DaEntry {
+    hw_code: u16,
+    hw_sub_code: u16,
+    regions: Vec<DaRegion>,
+}
+
+fn parse_da(data: &[u8]) -> Result<Vec<DaEntry>, String> {
+    if data.len() < 0x6C {
+        return Err("DA file too short".into());
+    }
+    if &data[..16] != b"MTK_DOWNLOAD_AGENT" {
+        return Err("Not a valid DA file (missing MTK_DOWNLOAD_AGENT)".into());
+    }
+    let version = u32::from_le_bytes(data[96..100].try_into().unwrap());
+    let magic = u32::from_le_bytes(data[100..104].try_into().unwrap());
+    if magic != 0x22668899 {
+        return Err("Invalid DA file magic".into());
+    }
+    let da_count = u32::from_le_bytes(data[104..108].try_into().unwrap()) as usize;
+    let entry_size = if version == 4 { 0xDC } else { 0xD8 };
+
+    let mut entries = Vec::new();
+    let mut pos = 0x6Cusize;
+    for _ in 0..da_count {
+        if pos + 20 > data.len() {
+            break;
+        }
+        let mut off = pos;
+        let r16 = |off: &mut usize| -> u16 {
+            let v = u16::from_le_bytes(data[*off..*off + 2].try_into().unwrap());
+            *off += 2;
+            v
+        };
+        let r32 = |off: &mut usize| -> u32 {
+            let v = u32::from_le_bytes(data[*off..*off + 4].try_into().unwrap());
+            *off += 4;
+            v
+        };
+        let _magic = r16(&mut off);
+        let hw_code = r16(&mut off);
+        let hw_sub_code = r16(&mut off);
+        let _hw_ver = r16(&mut off);
+        let _sw_ver = r16(&mut off);
+        let _reserved = r16(&mut off);
+        if version == 4 {
+            let _feature_set = r32(&mut off);
+        }
+        let _entry_index = r16(&mut off);
+        let region_count = r16(&mut off) as usize;
+
+        let mut regions = Vec::new();
+        for _ in 0..region_count {
+            if off + 20 > data.len() {
+                break;
+            }
+            let offset = r32(&mut off);
+            let length = r32(&mut off);
+            let addr = r32(&mut off);
+            let _region_length = r32(&mut off);
+            let sig_len = r32(&mut off);
+            regions.push(DaRegion { offset, length, addr, sig_len });
+        }
+        entries.push(DaEntry { hw_code, hw_sub_code, regions });
+        pos += entry_size;
+    }
+    Ok(entries)
+}
+
+fn select_da1(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8>, u32), String> {
+    let entries = parse_da(data)?;
+    if entries.is_empty() {
+        return Err("No DA entries found in file".into());
+    }
+    let entry = entries
+        .iter()
+        .find(|e| e.hw_code == dacode && e.hw_sub_code == hw_sub_code)
+        .or_else(|| entries.iter().find(|e| e.hw_code == dacode))
+        .ok_or_else(|| {
+            format!("No DA entry for dacode 0x{dacode:04X} (sub 0x{hw_sub_code:04X})")
+        })?;
+
+    let region = if entry.regions.len() == 2 {
+        entry.regions.first().ok_or("DA entry has no regions")?
+    } else {
+        entry.regions.get(1).ok_or("DA entry has no DA1 region")?
+    };
+
+    let start = region.offset as usize;
+    let end = start + region.length as usize;
+    if end > data.len() {
+        return Err(format!(
+            "DA1 region out of bounds (offset 0x{start:X} len 0x{:X})",
+            region.length
+        ));
+    }
+    Ok((region.addr, data[start..end].to_vec(), region.sig_len))
 }
 
 fn find_mtk_device_poll(timeout: Duration) -> Option<MtkDevice> {
@@ -1037,33 +1161,6 @@ fn find_mtk_device_poll(timeout: Duration) -> Option<MtkDevice> {
         }
         std::thread::sleep(Duration::from_millis(500));
     }
-}
-
-fn da1_address(hw_code: u16) -> u32 {
-    // All chips in the reference database load DA1 at 0x200000.
-    let _ = hw_code;
-    0x200000
-}
-
-fn default_signature_length(hw_code: u16) -> usize {
-    let _ = hw_code;
-    0x1000
-}
-
-fn detect_signature_length(data: &[u8], hw_code: u16) -> usize {
-    if data.len() >= 4 && data[0] == 0x7F && data[1] == b'E' && data[2] == b'L' && data[3] == b'F' {
-        return default_signature_length(hw_code);
-    }
-    if data.len() >= 4 && (data[3] == 0xEA || data[3] == 0xEB) {
-        return 0x100;
-    }
-    if data.len() >= 8 {
-        let header = &data[..8];
-        if header.windows(4).any(|w| w == b"MTK") || header.windows(4).any(|w| w == b"hvea") {
-            return 0x1000;
-        }
-    }
-    default_signature_length(hw_code)
 }
 
 fn do_da(args: &[String]) -> Response {
@@ -1118,10 +1215,20 @@ fn do_da(args: &[String]) -> Response {
     }
 
     let hw_code = proto.get_hw_code().unwrap_or(0);
-    let address = addr_override.unwrap_or_else(|| da1_address(hw_code));
-    let sig_len = siglen_override.unwrap_or(detect_signature_length(&data, hw_code) as u32);
+    let hw_sub_code = proto.get_hw_sw_ver().map(|(sub, _, _)| sub).unwrap_or(0);
+    let dacode = dacode_for(hw_code);
 
-    let upload_err = match proto.send_da(address, &data, sig_len) {
+    let (da_addr, da1, da_sig) = match select_da1(&data, dacode, hw_sub_code) {
+        Ok(v) => v,
+        Err(e) => {
+            device.close();
+            return Response::error(e);
+        }
+    };
+    let address = addr_override.unwrap_or(da_addr);
+    let sig_len = siglen_override.unwrap_or(da_sig);
+
+    let upload_err = match proto.send_da(address, &da1, sig_len) {
         Ok(()) => match proto.jump_da(address) {
             Ok(()) => None,
             Err(e) => Some(format!("Jump DA failed: {e}")),
@@ -1139,7 +1246,7 @@ fn do_da(args: &[String]) -> Response {
         da_upload: Some(DaUploadResult {
             success,
             address: Some(address),
-            size: Some(data.len()),
+            size: Some(da1.len()),
             sig_len: Some(sig_len),
             error: upload_err,
         }),
