@@ -1160,6 +1160,27 @@ fn print_help() {
     println!("Tip: 'connect --wait MTK_AllInOne_DA.bin' = wait for device, then auto handshake + DA.");
 }
 
+fn tokenize(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    for c in input.chars() {
+        match c {
+            '"' => in_quotes = !in_quotes,
+            ' ' if !in_quotes => {
+                if !cur.is_empty() {
+                    tokens.push(std::mem::take(&mut cur));
+                }
+            }
+            _ => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        tokens.push(cur);
+    }
+    tokens
+}
+
 fn run_interactive() {
     print_help();
     println!();
@@ -1179,9 +1200,10 @@ fn run_interactive() {
             continue;
         }
 
-        let mut parts = line.split_whitespace();
-        let cmd = parts.next().unwrap().to_lowercase();
-        let rest: Vec<String> = parts.map(String::from).collect();
+        let tokens = tokenize(line);
+        let mut iter = tokens.into_iter();
+        let cmd = iter.next().unwrap().to_lowercase();
+        let rest: Vec<String> = iter.collect();
 
         match cmd.as_str() {
             "help" | "?" => print_help(),
