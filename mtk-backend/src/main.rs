@@ -1090,7 +1090,7 @@ fn gpt_partition_count(gpt: &[u8]) -> Option<u32> {
 }
 
 fn scan_system_props(
-    xf: &mut XFlash<MtkDevice>,
+    xf: &mut XFlash<'_, MtkDevice>,
     storage_type: u32,
     gpt: &[u8],
 ) -> std::collections::HashMap<String, String> {
