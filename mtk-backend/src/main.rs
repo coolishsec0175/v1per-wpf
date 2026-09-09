@@ -21,7 +21,7 @@ const BULK_IN_SZ: usize = 0x80000;
 const BULK_OUT_SZ: usize = 0x80000;
 
 #[derive(Serialize)]
-struct DeviceInfo {
+struct LocalDeviceInfo {
     vid: u16,
     pid: u16,
     mode: String,
@@ -49,7 +49,7 @@ struct DaUploadResult {
 struct Response {
     status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    devices: Option<Vec<DeviceInfo>>,
+    devices: Option<Vec<LocalDeviceInfo>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     handshake: Option<HandshakeResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -176,7 +176,8 @@ fn do_detect() -> Response {
         if vid == MTK_VID || mode.is_some() {
             let product = dev.product_string().unwrap_or("").to_string();
             let manufacturer = dev.manufacturer_string().unwrap_or("").to_string();
-            found.push(DeviceInfo {
+            found.push(LocalDeviceInfo {
+
                 vid,
                 pid,
                 mode: mode.unwrap_or_else(|| "unknown".into()),
@@ -293,7 +294,8 @@ fn do_connect() -> Response {
         }
     };
 
-    let (ep_in, ep_out, in_mps, out_mps) = match select_bulk_endpoints(&bulk_iface) {
+    let (ep_in, ep_out, _in_mps, _out_mps) = match select_bulk_endpoints(&bulk_iface) {
+
         Ok(v) => v,
         Err(e) => {
             return Response {
@@ -312,7 +314,8 @@ fn do_connect() -> Response {
 
     let mut writer = match bulk_iface
         .endpoint::<Bulk, Out>(ep_out)
-        .and_then(|ep| ep.writer(BULK_OUT_SZ).with_num_transfers(tr).with_write_timeout(Duration::from_secs(5)).build())
+        .and_then(|ep| ep.writer(BULK_OUT_SZ).with_num_transfers(tr).with_write_timeout(Duration::from_secs(5)))
+        .build()
     {
         Ok(w) => w,
         Err(e) => {
@@ -328,7 +331,8 @@ fn do_connect() -> Response {
 
     let mut reader = match bulk_iface
         .endpoint::<Bulk, In>(ep_in)
-        .and_then(|ep| ep.reader(BULK_IN_SZ).with_num_transfers(tr).with_read_timeout(Duration::from_secs(5)).build())
+        .and_then(|ep| ep.reader(BULK_IN_SZ).with_num_transfers(tr).with_read_timeout(Duration::from_secs(5)))
+        .build()
     {
         Ok(r) => r,
         Err(e) => {
@@ -377,7 +381,8 @@ fn do_connect() -> Response {
             }
         }
 
-        if resp[0] != expected {
+        if resp != expected {
+
             handshake_ok = false;
             break;
         }
