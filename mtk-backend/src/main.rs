@@ -94,6 +94,12 @@ struct HandshakeResult {
 struct DaUploadResult {
     success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    address: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sig_len: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
@@ -493,6 +499,31 @@ impl<'a> PlProtocol<'a> {
         self.status_ok()?;
         Ok(Some(id))
     }
+
+    fn send_da(&mut self, address: u32, data: &[u8], sig_len: u32) -> io::Result<()> {
+        self.echo(&[Command::SendDa as u8], 1)?;
+        self.echo(&address.to_be_bytes(), 4)?;
+        self.echo(&(data.len() as u32).to_be_bytes(), 4)?;
+        self.echo(&sig_len.to_be_bytes(), 4)?;
+        self.status_ok()?;
+
+        const CHUNK: usize = 0x400;
+        for chunk in data.chunks(CHUNK) {
+            self.port.write_all(chunk)?;
+        }
+
+        // Device replies with the XOR checksum of the DA data, then a status word.
+        let _checksum = self.read_u16_be()?;
+        self.status_ok()?;
+        Ok(())
+    }
+
+    fn jump_da(&mut self, address: u32) -> io::Result<()> {
+        self.echo(&[Command::JumpDa as u8], 1)?;
+        self.echo(&address.to_be_bytes(), 4)?;
+        self.status_ok()?;
+        Ok(())
+    }
 }
 
 fn do_detect() -> Response {
@@ -613,15 +644,139 @@ fn do_connect() -> Response {
     }
 }
 
+fn parse_hex(s: &str) -> Option<u32> {
+    let t = s.trim();
+    if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        u32::from_str_radix(hex, 16).ok()
+    } else {
+        t.parse::<u32>().ok()
+    }
+}
+
+fn da1_address(hw_code: u16) -> u32 {
+    // All chips in the reference database load DA1 at 0x200000.
+    let _ = hw_code;
+    0x200000
+}
+
+fn default_signature_length(hw_code: u16) -> usize {
+    let _ = hw_code;
+    0x1000
+}
+
+fn detect_signature_length(data: &[u8], hw_code: u16) -> usize {
+    if data.len() >= 4 && data[0] == 0x7F && data[1] == b'E' && data[2] == b'L' && data[3] == b'F' {
+        return default_signature_length(hw_code);
+    }
+    if data.len() >= 4 && (data[3] == 0xEA || data[3] == 0xEB) {
+        return 0x100;
+    }
+    if data.len() >= 8 {
+        let header = &data[..8];
+        if header.windows(4).any(|w| w == b"MTK") || header.windows(4).any(|w| w == b"hvea") {
+            return 0x1000;
+        }
+    }
+    default_signature_length(hw_code)
+}
+
+fn do_da(args: &[String]) -> Response {
+    let mut da_path = None;
+    let mut addr_override = None;
+    let mut siglen_override = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--addr" | "-a" => {
+                if i + 1 < args.len() {
+                    addr_override = parse_hex(&args[i + 1]);
+                    i += 1;
+                }
+            }
+            "--siglen" | "-s" => {
+                if i + 1 < args.len() {
+                    siglen_override = parse_hex(&args[i + 1]);
+                    i += 1;
+                }
+            }
+            _ if da_path.is_none() => da_path = Some(args[i].clone()),
+            _ => {}
+        }
+        i += 1;
+    }
+
+    let da_path = match da_path {
+        Some(p) => p,
+        None => {
+            return Response::error(
+                "Usage: mtk-backend da <da.bin> [--addr 0x200000] [--siglen 0x1000]".into(),
+            );
+        }
+    };
+
+    let data = match std::fs::read(&da_path) {
+        Ok(d) => d,
+        Err(e) => return Response::error(format!("Failed to read DA file: {e}")),
+    };
+
+    let (info, conn_type) = match UsbMtkPort::find_mtk_device() {
+        Ok(v) => v,
+        Err(e) => return Response::error(e),
+    };
+
+    let mut port = UsbMtkPort::new(info, conn_type);
+    if let Err(e) = port.open() {
+        return Response::error(e);
+    }
+
+    let mut proto = PlProtocol::new(&mut port);
+    if let Err(e) = proto.handshake() {
+        port.close();
+        return Response::error(format!("Handshake failed: {e}"));
+    }
+
+    let hw_code = proto.get_hw_code().unwrap_or(0);
+    let address = addr_override.unwrap_or_else(|| da1_address(hw_code));
+    let sig_len = siglen_override.unwrap_or(detect_signature_length(&data, hw_code) as u32);
+
+    let upload_err = match proto.send_da(address, &data, sig_len) {
+        Ok(()) => match proto.jump_da(address) {
+            Ok(()) => None,
+            Err(e) => Some(format!("Jump DA failed: {e}")),
+        },
+        Err(e) => Some(format!("Send DA failed: {e}")),
+    };
+
+    port.close();
+
+    let success = upload_err.is_none();
+    Response {
+        status: if success { "ok".into() } else { "error".into() },
+        devices: None,
+        handshake: None,
+        da_upload: Some(DaUploadResult {
+            success,
+            address: Some(address),
+            size: Some(data.len()),
+            sig_len: Some(sig_len),
+            error: upload_err,
+        }),
+        error: if success { None } else { Some("DA upload failed".into()) },
+    }
+}
+
 fn main() {
     env_logger::init();
 
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("detect");
+    let rest = &args[2..];
 
     let resp = match cmd {
         "detect" | "list" | "devices" => do_detect(),
         "connect" | "handshake" | "info" => do_connect(),
+        "da" | "send-da" | "upload-da" => do_da(rest),
         _ => Response::error(format!("Unknown command: {cmd}")),
     };
 
