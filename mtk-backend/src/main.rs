@@ -965,15 +965,23 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
     }
 
     fn detect_storage(&mut self) -> io::Result<u32> {
-        if let Ok(resp) = self.devctrl(XfCmd::GetEmmcInfo, None) {
-            if resp.len() >= 4 && u32::from_le_bytes(resp[0..4].try_into().unwrap()) == 0x1 {
-                return Ok(0x1);
+        match self.devctrl(XfCmd::GetEmmcInfo, None) {
+            Ok(resp) => {
+                eprintln!("[dbg] GetEmmcInfo -> {} bytes", resp.len());
+                if resp.len() >= 4 && u32::from_le_bytes(resp[0..4].try_into().unwrap()) == 0x1 {
+                    return Ok(0x1);
+                }
             }
+            Err(e) => eprintln!("[dbg] GetEmmcInfo err: {e}"),
         }
-        if let Ok(resp) = self.devctrl(XfCmd::GetUfsInfo, None) {
-            if resp.len() >= 4 && u32::from_le_bytes(resp[0..4].try_into().unwrap()) == 0x30 {
-                return Ok(0x30);
+        match self.devctrl(XfCmd::GetUfsInfo, None) {
+            Ok(resp) => {
+                eprintln!("[dbg] GetUfsInfo -> {} bytes", resp.len());
+                if resp.len() >= 4 && u32::from_le_bytes(resp[0..4].try_into().unwrap()) == 0x30 {
+                    return Ok(0x30);
+                }
             }
+            Err(e) => eprintln!("[dbg] GetUfsInfo err: {e}"),
         }
         Err(io::Error::new(io::ErrorKind::Other, "unknown storage type"))
     }
@@ -1041,6 +1049,11 @@ fn xflash_da2_boot(
     xf.da1_sync().map_err(|e| e.to_string())?;
     xf.get_packet_length().map_err(|e| e.to_string())?;
     xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
+    eprintln!("[dbg] boot_to ok, checking DA2...");
+    match xf.get_packet_length() {
+        Ok(()) => eprintln!("[dbg] get_packet_length after DA2 OK"),
+        Err(e) => eprintln!("[dbg] get_packet_length after DA2 err: {e}"),
+    }
 
     // Give DA2 a moment to initialize DRAM and storage.
     std::thread::sleep(Duration::from_millis(500));
