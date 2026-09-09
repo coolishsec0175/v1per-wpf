@@ -1056,7 +1056,7 @@ fn xflash_da2_boot(
     let chip = chip_name(hw_code);
     println!("Chipset type: {}", chip);
 
-    let props = scan_system_props(&xf, storage_type, &gpt);
+    let props = scan_system_props(&mut xf, storage_type, &gpt);
     println!(
         "Security Patch: {}",
         props.get("ro.build.version.security_patch").cloned().unwrap_or_default()
