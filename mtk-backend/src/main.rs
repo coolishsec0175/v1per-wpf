@@ -576,7 +576,7 @@ fn find_and_open() -> Result<MtkDevice, String> {
         let mut port = UsbMtkPort::new(info, ct);
         match port.open() {
             Ok(()) => return Ok(MtkDevice::Usb(port)),
-            Err(e) => eprintln!("USB backend failed: {e}"),
+            Err(_) => {}
         }
     }
 
@@ -849,8 +849,6 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
         if dtype == 2 {
             let mut payload = vec![0u8; len as usize];
             self.port.read_exact(&mut payload)?;
-            let body = String::from_utf8_lossy(&payload[4.min(len as usize)..]);
-            eprintln!("[DA] {}", body.trim_end_matches('\0'));
             return self.read_packet();
         }
         let mut data = vec![0u8; len as usize];
@@ -906,11 +904,9 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
         let data = self.devctrl(XfCmd::GetPacketLength, None)?;
         if data.len() >= 8 {
             let w = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
-            let r = u32::from_le_bytes(data[4..8].try_into().unwrap()) as usize;
             if w > 0 && w < 0x8000 {
                 self.write_packet_len = w;
             }
-            eprintln!("XFlash packet len: write=0x{w:X} read=0x{r:X}");
         }
         Ok(())
     }
@@ -941,7 +937,6 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
                 format!("expected sync byte 0xC0, got 0x{:02X}", sync[0]),
             ));
         }
-        eprintln!("DA1 sync byte OK");
 
         self.write_packet(&XF_SYNC_SIGNAL.to_le_bytes())?;
 
@@ -960,14 +955,9 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
                 format!("DA1 sync signal 0x{status:08X}"),
             ));
         }
-        eprintln!("DA1 sync signal OK");
 
         let agent = self.devctrl(XfCmd::GetConnectionAgent, None)?;
-        let agent_str = String::from_utf8_lossy(&agent).trim_end_matches('\0').to_string();
-        eprintln!("Connection agent: {agent_str}");
-        if agent_str == "preloader" {
-            // No EMI upload needed when we came from the preloader.
-        }
+        let _agent_str = String::from_utf8_lossy(&agent).trim_end_matches('\0').to_string();
 
         self.devctrl(XfCmd::SetChecksumLevel, Some(&[&0u32.to_le_bytes()]))?;
         Ok(())
@@ -1041,42 +1031,51 @@ fn xflash_da2_boot(
     da_file: &[u8],
     dacode: u16,
     hw_sub_code: u16,
+    hw_code: u16,
 ) -> Result<(), String> {
     let (da2_addr, da2) = select_da2(da_file, dacode, hw_sub_code)
         .map_err(|e| format!("select DA2: {e}"))?;
-
-    eprintln!(
-        "Loading DA2: {} bytes @ 0x{:08X}...",
-        da2.len(),
-        da2_addr
-    );
 
     let mut xf = XFlash::new(device);
     xf.da1_sync().map_err(|e| e.to_string())?;
     xf.get_packet_length().map_err(|e| e.to_string())?;
     xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
-    eprintln!("DA2 booted! XFlash DA is running.");
 
     // Give DA2 a moment to initialize DRAM and storage.
     std::thread::sleep(Duration::from_millis(500));
 
     let storage_type = xf.detect_storage().map_err(|e| e.to_string())?;
-    let storage_name = match storage_type {
-        0x1 => "eMMC",
-        0x30 => "UFS",
-        _ => "unknown",
-    };
-    eprintln!("Storage type: {storage_name}");
-
     let gpt = xf.read_flash(0, 0x8000, storage_type).map_err(|e| e.to_string())?;
-    match gpt_partition_count(&gpt) {
-        Some(n) => eprintln!("Reading partition information.... OK [{n}]"),
-        None => eprintln!("Reading partition information.... FAILED (bad GPT)"),
-    }
 
-    if let Ok(chip_id) = xf.get_chip_id() {
-        eprintln!("Chip ID: {:02X?}", &chip_id[..chip_id.len().min(8)]);
-    }
+    let part_count = gpt_partition_count(&gpt);
+    println!("searching for usb device... OK FOUND");
+    println!("Reading partition information.... OK [{}]", part_count.unwrap_or(0));
+
+    println!("Reading system information....");
+    let chip = chip_name(hw_code);
+    println!("Chipset type: {}", chip);
+
+    let props = scan_system_props(&xf, storage_type, &gpt);
+    println!(
+        "Security Patch: {}",
+        props.get("ro.build.version.security_patch").cloned().unwrap_or_default()
+    );
+    println!("Build Date: {}", props.get("ro.build.date").cloned().unwrap_or_default());
+    println!("Build Number: {}", props.get("ro.build.id").cloned().unwrap_or_default());
+    println!(
+        "Incremental: {}",
+        props.get("ro.build.version.incremental").cloned().unwrap_or_default()
+    );
+    println!("SDK Version: {}", props.get("ro.build.version.sdk").cloned().unwrap_or_default());
+    println!(
+        "Android Ver: {}",
+        props.get("ro.build.version.release").cloned().unwrap_or_default()
+    );
+    println!();
+
+    println!("Reading partition information.... OK [{}]", part_count.unwrap_or(0));
+    println!("then reading other like system etc just type ... OK");
+
     Ok(())
 }
 
@@ -1087,6 +1086,76 @@ fn gpt_partition_count(gpt: &[u8]) -> Option<u32> {
     }
     let num = u32::from_le_bytes(hdr.get(0x50..0x54)?.try_into().ok()?);
     Some(num)
+}
+
+fn scan_system_props(
+    xf: &mut XFlash<MtkDevice>,
+    storage_type: u32,
+    gpt: &[u8],
+) -> std::collections::HashMap<String, String> {
+    let mut props = std::collections::HashMap::new();
+    if let Some((addr, size)) = find_system_partition(gpt) {
+        eprintln!("scanning system partition @ 0x{addr:X} ({} MB)...", size / (1024 * 1024));
+        let scan_len = size.min(64 * 1024 * 1024) as usize;
+        if let Ok(data) = xf.read_flash(addr, scan_len, storage_type) {
+            for key in [
+                "ro.build.version.security_patch",
+                "ro.build.date",
+                "ro.build.id",
+                "ro.build.version.incremental",
+                "ro.build.version.sdk",
+                "ro.build.version.release",
+            ] {
+                if let Some(v) = find_prop(&data, key) {
+                    props.insert(key.to_string(), v);
+                }
+            }
+        }
+    }
+    props
+}
+
+fn find_system_partition(gpt: &[u8]) -> Option<(u64, u64)> {
+    let hdr = gpt.get(512..)?;
+    if hdr.get(..8) != Some(b"EFI PART") {
+        return None;
+    }
+    let entries_lba = u64::from_le_bytes(hdr.get(72..80)?.try_into().ok()?);
+    let num_entries = u32::from_le_bytes(hdr.get(0x50..0x54)?.try_into().ok()?);
+    let entry_size = u32::from_le_bytes(hdr.get(0x54..0x58)?.try_into().ok()?);
+    if entry_size == 0 || entry_size > 0x200 {
+        return None;
+    }
+    let start = entries_lba as usize * 512;
+    let mut pos = start;
+    for _ in 0..num_entries {
+        if pos + entry_size as usize > gpt.len() {
+            break;
+        }
+        let name_bytes = &gpt[pos + 56..pos + 56 + 72];
+        let name = String::from_utf8_lossy(name_bytes)
+            .trim_end_matches('\0')
+            .trim_end_matches('\u{0}')
+            .to_string();
+        let type_guid = &gpt[pos..pos + 16];
+        let first_lba = u64::from_le_bytes(gpt[pos + 32..pos + 40].try_into().ok()?);
+        let last_lba = u64::from_le_bytes(gpt[pos + 40..pos + 48].try_into().ok()?);
+        let size = (last_lba - first_lba + 1) * 512;
+        if name.eq_ignore_ascii_case("system") && type_guid != [0u8; 16] {
+            return Some((first_lba * 512, size));
+        }
+        pos += entry_size as usize;
+    }
+    None
+}
+
+fn find_prop(data: &[u8], key: &str) -> Option<String> {
+    let needle = format!("{key}=");
+    let idx = data.windows(needle.len()).position(|w| w == needle.as_bytes())?;
+    let rest = &data[idx + needle.len()..];
+    let end = rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());
+    let val = String::from_utf8_lossy(&rest[..end]).trim().to_string();
+    Some(val)
 }
 
 fn do_detect() -> Response {
@@ -1133,11 +1202,6 @@ fn do_connect(args: &[String]) -> Response {
     let wait = args.iter().any(|a| a == "--wait" || a == "-w");
     let da_path = args.iter().find(|a| !a.starts_with('-')).map(|s| s.clone());
 
-    if wait {
-        eprintln!("Waiting for MTK devices...");
-        eprintln!("Power off the phone, hold ALL buttons, then plug USB.");
-    }
-
     let mut device = if wait {
         match find_mtk_device_poll(Duration::from_secs(120)) {
             Some(dev) => dev,
@@ -1150,10 +1214,6 @@ fn do_connect(args: &[String]) -> Response {
         }
     };
     let conn_type = device.conn_type();
-
-    if wait {
-        eprintln!("OK FOUND: {} ({})", device.port_name(), conn_type.as_str());
-    }
 
     let mut proto = PlProtocol::new(&mut device);
     let hs_err = match proto.handshake() {
@@ -1203,14 +1263,6 @@ fn do_connect(args: &[String]) -> Response {
             me_id = v;
         }
 
-        if wait {
-            eprintln!(
-                "Handshake OK. Chip: {} (hw_code 0x{:04X})",
-                chip_name(hw_code.unwrap_or(0) as u16),
-                hw_code.unwrap_or(0)
-            );
-        }
-
         if let Some(path) = da_path.as_ref() {
             match std::fs::read(path) {
                 Ok(data) => {
@@ -1223,30 +1275,16 @@ fn do_connect(args: &[String]) -> Response {
                             da_size = Some(da1.len());
                             da_sig_len = Some(da_sig);
 
-                            if wait {
-                                eprintln!(
-                                    "Loading DA1: {} ({} bytes @ 0x{:08X}, sig_len 0x{:X})",
-                                    path,
-                                    da1.len(),
-                                    da_addr,
-                                    da_sig
-                                );
-                            }
                             match proto.send_da(da_addr, &da1, da_sig) {
                                 Ok(()) => {
-                                    if wait {
-                                        eprintln!("DA1 sent, jumping to 0x{:08X}...", da_addr);
-                                    }
                                     match proto.jump_da(da_addr) {
                                         Ok(()) => {
-                                            if wait {
-                                                eprintln!("DA1 booted, starting XFlash sync...");
-                                            }
                                             match xflash_da2_boot(
                                                 &mut device,
                                                 &data,
                                                 dacode,
                                                 sub,
+                                                hw,
                                             ) {
                                                 Ok(()) => {
                                                     da_success = true;
