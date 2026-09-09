@@ -657,7 +657,7 @@ fn do_connect(args: &[String]) -> Response {
             );
         }
 
-        if let Some(path) = da_path {
+        if let Some(path) = da_path.as_ref() {
             match std::fs::read(&path) {
                 Ok(data) => {
                     let hw = hw_code.unwrap_or(0) as u16;
