@@ -3,8 +3,24 @@ use nusb::io::{EndpointRead, EndpointWrite};
 use nusb::transfer::{Bulk, ControlOut, ControlType, Direction, In, Out, Recipient};
 use nusb::{Device, DeviceInfo, Interface, MaybeFuture};
 use serde::Serialize;
+use serialport::{ClearBuffer, SerialPort, SerialPortInfo, SerialPortType};
 use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
+
+#[cfg(windows)]
+type NativeSerial = serialport::COMPort;
+#[cfg(not(windows))]
+type NativeSerial = serialport::TTYPort;
+
+trait MtkPort {
+    fn open(&mut self) -> Result<(), String>;
+    fn close(&mut self);
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()>;
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()>;
+    fn set_timeout(&mut self, timeout: Duration) -> io::Result<()>;
+    fn conn_type(&self) -> ConnType;
+    fn port_name(&self) -> String;
+}
 
 const MTK_VID: u16 = 0x0E8D;
 const BULK_IN_SZ: usize = 0x80000;
@@ -339,14 +355,248 @@ impl UsbMtkPort {
     fn conn_type(&self) -> ConnType {
         self.conn_type
     }
+
+    fn port_name(&self) -> String {
+        format!("USB {:04X}:{:04X}", self.info.vendor_id(), self.info.product_id())
+    }
 }
 
-struct PlProtocol<'a> {
-    port: &'a mut UsbMtkPort,
+impl MtkPort for UsbMtkPort {
+    fn open(&mut self) -> Result<(), String> {
+        UsbMtkPort::open(self)
+    }
+
+    fn close(&mut self) {
+        UsbMtkPort::close(self);
+    }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        UsbMtkPort::read_exact(self, buf)
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        UsbMtkPort::write_all(self, buf)
+    }
+
+    fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
+        UsbMtkPort::set_timeout(self, timeout)
+    }
+
+    fn conn_type(&self) -> ConnType {
+        UsbMtkPort::conn_type(self)
+    }
+
+    fn port_name(&self) -> String {
+        UsbMtkPort::port_name(self)
+    }
 }
 
-impl<'a> PlProtocol<'a> {
-    fn new(port: &'a mut UsbMtkPort) -> Self {
+struct SerialMtkPort {
+    port_info: SerialPortInfo,
+    port: Option<NativeSerial>,
+    baudrate: u32,
+    conn_type: ConnType,
+    is_open: bool,
+}
+
+impl SerialMtkPort {
+    fn new(port_info: SerialPortInfo, conn_type: ConnType) -> Self {
+        let baudrate = match conn_type {
+            ConnType::Brom => 115_200,
+            ConnType::Preloader | ConnType::Da => 921_600,
+        };
+        Self {
+            port_info,
+            port: None,
+            baudrate,
+            conn_type,
+            is_open: false,
+        }
+    }
+
+    fn find_mtk_serial() -> Option<(SerialPortInfo, ConnType)> {
+        let ports = serialport::available_ports().unwrap_or_default();
+        for port_info in ports {
+            if let SerialPortType::UsbPort(usb) = &port_info.port_type {
+                if let Some((_, _, ct)) =
+                    KNOWN_PORTS.iter().find(|(v, p, _)| *v == usb.vid && *p == usb.pid)
+                {
+                    return Some((port_info, *ct));
+                }
+            }
+        }
+        None
+    }
+}
+
+impl MtkPort for SerialMtkPort {
+    fn open(&mut self) -> Result<(), String> {
+        if self.is_open {
+            return Ok(());
+        }
+        let port = serialport::new(&self.port_info.port_name, self.baudrate)
+            .timeout(MIN_TIMEOUT)
+            .open_native()
+            .map_err(|e| format!("Failed to open serial port {}: {e}", self.port_info.port_name))?;
+        self.port = Some(port);
+        self.is_open = true;
+        Ok(())
+    }
+
+    fn close(&mut self) {
+        if let Some(mut port) = self.port.take() {
+            let _ = port.clear(ClearBuffer::All);
+        }
+        self.is_open = false;
+    }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        let port = self
+            .port
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "port not open"))?;
+        port.read_exact(buf)
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        let port = self
+            .port
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "port not open"))?;
+        port.write_all(buf)
+    }
+
+    fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
+        let port = self
+            .port
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotConnected, "port not open"))?;
+        port.set_timeout(timeout)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+        Ok(())
+    }
+
+    fn conn_type(&self) -> ConnType {
+        self.conn_type
+    }
+
+    fn port_name(&self) -> String {
+        self.port_info.port_name.clone()
+    }
+}
+
+enum MtkDevice {
+    Usb(UsbMtkPort),
+    Serial(SerialMtkPort),
+}
+
+impl MtkDevice {
+    fn open(&mut self) -> Result<(), String> {
+        match self {
+            MtkDevice::Usb(p) => p.open(),
+            MtkDevice::Serial(p) => p.open(),
+        }
+    }
+
+    fn close(&mut self) {
+        match self {
+            MtkDevice::Usb(p) => p.close(),
+            MtkDevice::Serial(p) => p.close(),
+        }
+    }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        match self {
+            MtkDevice::Usb(p) => p.read_exact(buf),
+            MtkDevice::Serial(p) => p.read_exact(buf),
+        }
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        match self {
+            MtkDevice::Usb(p) => p.write_all(buf),
+            MtkDevice::Serial(p) => p.write_all(buf),
+        }
+    }
+
+    fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
+        match self {
+            MtkDevice::Usb(p) => p.set_timeout(timeout),
+            MtkDevice::Serial(p) => p.set_timeout(timeout),
+        }
+    }
+
+    fn conn_type(&self) -> ConnType {
+        match self {
+            MtkDevice::Usb(p) => p.conn_type(),
+            MtkDevice::Serial(p) => p.conn_type(),
+        }
+    }
+
+    fn port_name(&self) -> String {
+        match self {
+            MtkDevice::Usb(p) => p.port_name(),
+            MtkDevice::Serial(p) => p.port_name(),
+        }
+    }
+}
+
+impl MtkPort for MtkDevice {
+    fn open(&mut self) -> Result<(), String> {
+        MtkDevice::open(self)
+    }
+
+    fn close(&mut self) {
+        MtkDevice::close(self);
+    }
+
+    fn read_exact(&mut self, buf: &mut [u8]) -> io::Result<()> {
+        MtkDevice::read_exact(self, buf)
+    }
+
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        MtkDevice::write_all(self, buf)
+    }
+
+    fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
+        MtkDevice::set_timeout(self, timeout)
+    }
+
+    fn conn_type(&self) -> ConnType {
+        MtkDevice::conn_type(self)
+    }
+
+    fn port_name(&self) -> String {
+        MtkDevice::port_name(self)
+    }
+}
+
+fn find_and_open() -> Result<MtkDevice, String> {
+    if let Ok((info, ct)) = UsbMtkPort::find_mtk_device() {
+        let mut port = UsbMtkPort::new(info, ct);
+        match port.open() {
+            Ok(()) => return Ok(MtkDevice::Usb(port)),
+            Err(e) => eprintln!("USB backend failed: {e}"),
+        }
+    }
+
+    if let Some((info, ct)) = SerialMtkPort::find_mtk_serial() {
+        let mut port = SerialMtkPort::new(info, ct);
+        match port.open() {
+            Ok(()) => return Ok(MtkDevice::Serial(port)),
+            Err(e) => return Err(e),
+        }
+    }
+
+    Err("No MTK device found (USB or VCOM)".into())
+}
+
+struct PlProtocol<'a, P: MtkPort> {
+    port: &'a mut P,
+}
+
+impl<'a, P: MtkPort> PlProtocol<'a, P> {
+    fn new(port: &'a mut P) -> Self {
         Self { port }
     }
 
@@ -582,33 +832,24 @@ fn do_connect(args: &[String]) -> Response {
         eprintln!("Power off the phone, hold ALL buttons, then plug USB.");
     }
 
-    let (info, conn_type) = match if wait {
+    let mut device = if wait {
         match find_mtk_device_poll(Duration::from_secs(120)) {
-            Some(v) => Ok(v),
-            None => Err("No MTK device found after 120s".to_string()),
+            Some(dev) => dev,
+            None => return Response::error("No MTK device found after 120s".to_string()),
         }
     } else {
-        UsbMtkPort::find_mtk_device()
-    } {
-        Ok(v) => v,
-        Err(e) => return Response::error(e),
+        match find_and_open() {
+            Ok(dev) => dev,
+            Err(e) => return Response::error(e),
+        }
     };
+    let conn_type = device.conn_type();
 
     if wait {
-        eprintln!(
-            "OK FOUND: {:04X}:{:04X} ({})",
-            info.vendor_id(),
-            info.product_id(),
-            conn_type.as_str()
-        );
+        eprintln!("OK FOUND: {} ({})", device.port_name(), conn_type.as_str());
     }
 
-    let mut port = UsbMtkPort::new(info, conn_type);
-    if let Err(e) = port.open() {
-        return Response::error(e);
-    }
-
-    let mut proto = PlProtocol::new(&mut port);
+    let mut proto = PlProtocol::new(&mut device);
     let hs_err = match proto.handshake() {
         Ok(()) => None,
         Err(e) => Some(e.to_string()),
@@ -717,7 +958,7 @@ fn do_connect(args: &[String]) -> Response {
         eprintln!("Handshake failed: {}", hs_err.as_deref().unwrap_or("?"));
     }
 
-    port.close();
+    device.close();
 
     let success = hs_err.is_none();
     Response {
@@ -785,11 +1026,11 @@ fn chip_name(hw_code: u16) -> &'static str {
     }
 }
 
-fn find_mtk_device_poll(timeout: Duration) -> Option<(DeviceInfo, ConnType)> {
+fn find_mtk_device_poll(timeout: Duration) -> Option<MtkDevice> {
     let start = Instant::now();
     loop {
-        if let Ok((info, ct)) = UsbMtkPort::find_mtk_device() {
-            return Some((info, ct));
+        if let Ok(dev) = find_and_open() {
+            return Some(dev);
         }
         if start.elapsed() >= timeout {
             return None;
@@ -865,19 +1106,14 @@ fn do_da(args: &[String]) -> Response {
         Err(e) => return Response::error(format!("Failed to read DA file: {e}")),
     };
 
-    let (info, conn_type) = match UsbMtkPort::find_mtk_device() {
-        Ok(v) => v,
+    let mut device = match find_and_open() {
+        Ok(dev) => dev,
         Err(e) => return Response::error(e),
     };
 
-    let mut port = UsbMtkPort::new(info, conn_type);
-    if let Err(e) = port.open() {
-        return Response::error(e);
-    }
-
-    let mut proto = PlProtocol::new(&mut port);
+    let mut proto = PlProtocol::new(&mut device);
     if let Err(e) = proto.handshake() {
-        port.close();
+        device.close();
         return Response::error(format!("Handshake failed: {e}"));
     }
 
@@ -893,7 +1129,7 @@ fn do_da(args: &[String]) -> Response {
         Err(e) => Some(format!("Send DA failed: {e}")),
     };
 
-    port.close();
+    device.close();
 
     let success = upload_err.is_none();
     Response {
