@@ -250,12 +250,19 @@ impl UsbMtkPort {
         let device = self.info.open().wait().map_err(|e| format!("Failed to open device: {e:?}"))?;
         let (ctrl_num, bulk_num) = Self::find_cdc_interface_numbers(&device)?;
 
-        self.ctrl_interface = Some(
-            device
-                .detach_and_claim_interface(ctrl_num)
-                .wait()
-                .map_err(|e| format!("Failed to claim control interface: {e:?}"))?,
-        );
+        self.ctrl_interface = Some(match device.detach_and_claim_interface(ctrl_num).wait() {
+            Ok(i) => i,
+            Err(e) => {
+                if matches!(e.kind(), nusb::ErrorKind::Unsupported) {
+                    return Err(
+                        "Control interface claim failed: incompatible driver installed. \
+                         Install the WinUSB driver for this device with Zadig (zadig.akeo.ie)."
+                            .into(),
+                    );
+                }
+                return Err(format!("Failed to claim control interface: {e:?}"));
+            }
+        });
         let bulk_iface = device
             .detach_and_claim_interface(bulk_num)
             .wait()
