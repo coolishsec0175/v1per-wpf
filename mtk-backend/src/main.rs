@@ -2126,6 +2126,7 @@ fn run_interactive() {
                 let _resp = do_connect(&rest);
             }
             "da" | "send-da" | "upload-da" => print_response(&do_da(&rest)),
+            "exploit" | "unlock" => print_response(&do_exploit(&rest)),
             "cls" | "clear" => {
                 if cfg!(windows) {
                     let _ = std::process::Command::new("cmd").args(["/C", "cls"]).status();
