@@ -17,9 +17,10 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Build MTK Backend
+      - name: Clean and Build
         run: |
           cd mtk-backend
+          cargo clean
           cargo build --release
 
       - name: Upload Artifact
