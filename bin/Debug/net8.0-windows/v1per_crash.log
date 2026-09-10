@@ -2676,3 +2676,107 @@
    at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
    at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
 
+[2026-09-09 18:22:12] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:12] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:19] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:19] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:19] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:19] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:19] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+
+[2026-09-09 18:22:19] System.InvalidOperationException: Could not find color or style 'MTK'.
+   at Spectre.Console.AnsiMarkupTagParser.Parse(String text) in /_/src/Spectre.Console.Ansi/AnsiMarkupTagParser.cs:line 10
+   at Spectre.Console.AnsiMarkup.Parse(String markup, Nullable`1 style) in /_/src/Spectre.Console.Ansi/AnsiMarkup.cs:line 67
+   at Spectre.Console.Markup..ctor(String text, Nullable`1 style) in /_/src/Spectre.Console/Widgets/Markup.cs:line 43
+   at Spectre.Console.AnsiConsoleExtensions.Markup(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 87
+   at Spectre.Console.AnsiConsoleExtensions.MarkupLine(IAnsiConsole console, String value) in /_/src/Spectre.Console/Extensions/AnsiConsoleExtensions.Markup.cs:line 133
+   at Spectre.Console.AnsiConsole.MarkupLine(String value) in /_/src/Spectre.Console/AnsiConsole.Markup.cs:line 81
+   at V1Per.Ui.MarkupLine(String markup) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 61
+   at V1Per.Ui.Muted(String message) in C:\Users\My PC\Downloads\test\v1per-wpf\Console\Ui.cs:line 119
+   at v1per_wpf.MainWindow.<>c__DisplayClass7_2.<.ctor>b__12() in C:\Users\My PC\Downloads\test\v1per-wpf\MainWindow.xaml.cs:line 97
+   at System.Windows.Threading.ExceptionWrapper.InternalRealCall(Delegate callback, Object args, Int32 numArgs)
+   at System.Windows.Threading.ExceptionWrapper.TryCatchWhen(Object source, Delegate callback, Object args, Int32 numArgs, Delegate catchHandler)
+

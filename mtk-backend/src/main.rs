@@ -1034,6 +1034,11 @@ impl<'a, P: MtkPort> XFlash<'a, P> {
 }
 
 fn select_da2(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8>), String> {
+    let (addr, data, _sig) = select_da2_with_sig(data, dacode, hw_sub_code)?;
+    Ok((addr, data))
+}
+
+fn select_da2_with_sig(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8>, u32), String> {
     let entries = parse_da(data)?;
     let entry = entries
         .iter()
@@ -1053,7 +1058,7 @@ fn select_da2(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8
     if end > data.len() {
         return Err("DA2 region out of bounds".into());
     }
-    Ok((region.addr, data[start..end].to_vec()))
+    Ok((region.addr, data[start..end].to_vec(), region.sig_len))
 }
 
 /// Find payloads directory (next to exe, or in current dir).
@@ -1081,7 +1086,7 @@ fn xflash_da2_boot(
 ) -> Result<(), String> {
     let (da1_addr, da1, da1_sig) = select_da1(da_file, dacode, hw_sub_code)
         .map_err(|e| format!("select DA1: {e}"))?;
-    let (da2_addr, da2) = select_da2(da_file, dacode, hw_sub_code)
+    let (da2_addr, da2, da2_sig) = select_da2_with_sig(da_file, dacode, hw_sub_code)
         .map_err(|e| format!("select DA2: {e}"))?;
 
     let mut xf = XFlash::new(device);
@@ -1349,18 +1354,18 @@ fn find_bl_after(data: &[u8], start: usize) -> Option<usize> {
 fn resolve_bl_target(data: &[u8], bl_off: usize) -> Option<usize> {
     let hw1 = u16::from_le_bytes(data[bl_off..bl_off + 2].try_into().unwrap());
     let hw2 = u16::from_le_bytes(data[bl_off + 2..bl_off + 4].try_into().unwrap());
-    let s = ((hw1 >> 10) & 1) as i32;
+    let s = ((hw1 >> 10) & 1) as u32;
     let j1 = ((hw2 >> 13) & 1) as u32;
     let j2 = ((hw2 >> 11) & 1) as u32;
-    let i1 = (!(j1 ^ s as u32)) & 1;
-    let i2 = (!(j2 ^ s as u32)) & 1;
+    let i1 = (!(j1 ^ s)) & 1;
+    let i2 = (!(j2 ^ s)) & 1;
     let imm10 = (hw1 & 0x3FF) as u32;
     let imm11 = (hw2 & 0x7FF) as u32;
     let mut offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
     if s != 0 {
         offset |= 0xFE000000;
     }
-    let offset_i32 = i32::from_le_bytes(offset.to_le_bytes());
+    let offset_i32 = offset as i32;
     let target = (bl_off as i32 + 4 + offset_i32) as usize;
     if target < data.len() {
         Some(target)
@@ -1375,7 +1380,7 @@ fn find_pattern(data: &[u8], pattern: &[u8]) -> Option<usize> {
 
 /// Compute hash of data. mode: 0=MD5, 1=SHA1, 2=SHA256.
 fn compute_hash(mode: usize, data: &[u8]) -> Vec<u8> {
-    use std::io::Write;
+    use digest::Digest;
     match mode {
         0 => {
             let mut h = md5::Md5::new();
@@ -1403,7 +1408,7 @@ fn carbonara_exploit(
     da1_addr: u32,
     da1_sig: u32,
     da2_data: &[u8],
-    da2_addr: u32,
+    _da2_addr: u32,
     da2_sig: u32,
 ) -> Result<Vec<u8>, String> {
     eprintln!("[exploit] Carbonara...");
@@ -1440,9 +1445,9 @@ fn carbonara_exploit(
 /// Try loading stock DA for Carbonara exploit.
 fn try_stock_carbonara(
     xf: &mut XFlash<'_, MtkDevice>,
-    da1_data: &[u8],
+    _da1_data: &[u8],
     da1_addr: u32,
-    da1_sig: u32,
+    _da1_sig: u32,
     hw_code: u16,
     hw_sub: u16,
     payloads_dir: &std::path::Path,
