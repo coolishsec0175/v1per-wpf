@@ -2066,6 +2066,7 @@ fn print_help() {
     println!("  detect                  list MTK USB devices (brom/preloader/da)");
     println!("  connect [--wait] [da]   connect + handshake, optionally load DA");
     println!("  da <file> [--addr ..]   upload a DA file and jump to it");
+    println!("  exploit <file>          Carbonara exploit + device info");
     println!("  help                    show this help");
     println!("  exit                    quit");
     println!();
