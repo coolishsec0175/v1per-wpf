@@ -1528,7 +1528,7 @@ fn do_exploit(args: &[String]) -> Response {
         Ok(v) => v,
         Err(e) => { device.close(); return Response::error(e); }
     };
-    let (da2_addr, da2) = match select_da2(&data, dacode, hw_sub_code) {
+    let (da2_addr, da2, da2_sig) = match select_da2_with_sig(&data, dacode, hw_sub_code) {
         Ok(v) => v,
         Err(e) => { device.close(); return Response::error(e); }
     };
